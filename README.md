@@ -2,11 +2,11 @@
 
 A UCI chess engine written from scratch in C++20, optimized for blitz time controls (5+0 and faster).
 
-**Status: early development.** Phase 1 (board representation, move generation, perft) — see [`docs/ROADMAP.md`](docs/ROADMAP.md).
+**Status: early development.** Phases 1–2 complete — move generation is perft-exact (37/37, 626,461,214 nodes) and the engine plays legal chess over UCI with a PVS search and a tapered PSQT evaluation. Strength is **unmeasured**; the SPRT harness is the next milestone. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Goals
 
-- **3200+ CCRL**, by way of a modern alpha-beta search and a self-trained NNUE evaluation.
+- **3200+ CCRL**, by way of a modern alpha-beta search and a self-trained NNUE evaluation. Neural evaluation inside alpha-beta, rather than MCTS — the search runs on CPU, which is what blitz and the rating lists both reward.
 - **Blitz-first.** Search parameters tuned at the time control the engine is meant to play, with real effort spent on time management rather than treating it as a fixed fraction of the clock.
 - **Clean provenance.** Every network is trained exclusively on Rogatia's own self-play games. No Leela data, no Stockfish data, no third-party nets.
 
