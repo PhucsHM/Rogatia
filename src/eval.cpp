@@ -11,6 +11,8 @@
 // invest in tuning them.
 #include "eval.h"
 
+#include "nnue.h"
+
 namespace rogatia {
 
 namespace {
@@ -158,6 +160,10 @@ constexpr int PHASE_MAX = 24;
 }  // namespace
 
 Score evaluate(const Position& pos) {
+    // The tables below survive only as a fallback for a build with no network.
+    if (nnue::loaded())
+        return nnue::evaluate(pos);
+
     Score mg[COLOR_NB] = {0, 0};
     Score eg[COLOR_NB] = {0, 0};
     int   phase        = 0;
