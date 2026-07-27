@@ -601,8 +601,18 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
                 r -= PvNode * LMR_SCALE;
                 r -= improving * LMR_SCALE;
                 r -= inCheck * LMR_SCALE;
-                if (isQuiet)
-                    r -= W.history[us][from_sq(m)][to_sq(m)] * LMR_SCALE / tunable::LmrHistDiv;
+                if (isQuiet) {
+                    // The same statistic move ordering already scores with:
+                    // butterfly history plus both continuation offsets.  Reading
+                    // only the butterfly half threw away two thirds of what the
+                    // node already knows about this move.  ss->movedPiece was
+                    // captured before make_move, which has run by now.
+                    int hist = W.history[us][from_sq(m)][to_sq(m)];
+                    for (int off : {1, 2})
+                        if (const int* slot = cont_hist(ss - off, ss->movedPiece, to_sq(m)))
+                            hist += *slot;
+                    r -= hist * LMR_SCALE / tunable::LmrHistDiv;
+                }
 
                 newDepth = std::clamp(depth - (r / LMR_SCALE), 1, depth - 1);
             }

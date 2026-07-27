@@ -32,7 +32,7 @@
     X(LmrNoisyBase,    205,     0,   1000)      \
     X(LmrNoisyDiv,    3277,  1000,   6000)      \
     X(LmrCutNode,     2048,     0,   4096)      \
-    X(LmrHistDiv,     8192,  2048,  32768)      \
+    X(LmrHistDiv,    24576,  2048,  65536)      \
     X(LmpDepth,          8,     4,     12)      \
     X(LmpBase,           3,     1,     10)      \
     X(SeeDepth,          8,     4,     12)      \
