@@ -1,0 +1,29 @@
+build/
+rogatia
+rogatia-debug
+*.o
+*.d
+*.exe
+
+# NNUE nets are large binaries; they are released as GitHub release assets,
+# not committed. EVALFILE points at a local path.
+*.nnue
+*.bin
+
+# Datagen output (Phase 5) -- hundreds of GB, never committed.
+data/
+*.viriformat
+*.binpack
+*.zst
+
+# Test artifacts
+*.pgn
+*.epd
+!tests/*.epd
+logs/
+sprt-results/
+
+.vscode/
+.idea/
+.DS_Store
+compile_commands.json

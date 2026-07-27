@@ -1,0 +1,7 @@
+# Developed on Windows, built and tested on Linux. Force LF everywhere so the
+# two machines don't fight over line endings.
+* text=auto eol=lf
+
+*.nnue binary
+*.bin  binary
+Makefile text eol=lf

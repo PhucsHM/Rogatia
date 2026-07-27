@@ -1,0 +1,54 @@
+// Rogatia chess engine -- search.
+// SPDX-License-Identifier: GPL-3.0-or-later
+#ifndef ROGATIA_SEARCH_H
+#define ROGATIA_SEARCH_H
+
+#include <cstdint>
+#include <vector>
+
+#include "eval.h"
+#include "position.h"
+#include "types.h"
+
+namespace rogatia::search {
+
+// Everything a `go` command can ask for.  Zero means "not specified".
+struct Limits {
+    int           time[COLOR_NB] = {0, 0};
+    int           inc[COLOR_NB]  = {0, 0};
+    int           movestogo      = 0;
+    int           depth          = 0;
+    int           movetime       = 0;
+    std::uint64_t nodes          = 0;
+    bool          infinite       = false;
+    int           moveOverhead   = 10;
+};
+
+// Forget everything learned about the previous game: TT, killers, history.
+void clear();
+
+// Runs iterative deepening to completion, printing `info` lines as it goes and
+// a single `bestmove` at the end.  Blocking -- UCI runs it on its own thread.
+void go(Position& pos, const Limits& limits);
+
+// Asks the running search to abort at its next check.  Safe from any thread.
+void stop();
+
+// What a completed search found, for bench and for tests.
+struct Result {
+    std::uint64_t     nodes = 0;
+    Move              best  = MOVE_NONE;
+    Score             score = VALUE_NONE;
+    std::vector<Move> pv;
+};
+
+// Fixed depth, no output, no time checks, exact node count.
+Result search_fixed_depth(Position& pos, int depth);
+
+// True when the side to move ends up at least `threshold` ahead after the
+// capture sequence on the destination square plays itself out.
+bool see_ge(const Position& pos, Move m, int threshold);
+
+}  // namespace rogatia::search
+
+#endif  // ROGATIA_SEARCH_H
