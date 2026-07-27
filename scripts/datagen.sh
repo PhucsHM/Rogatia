@@ -20,6 +20,19 @@ NODES=${3:-5000}
 ENGINE=$(bin "$ROOT/rogatia")
 [ -x "$ENGINE" ] || { echo "build the engine first: make" >&2; exit 1; }
 
+# Syzygy hard adjudication. Every worker reads the same set, so it is an
+# environment variable rather than another positional argument.
+export SYZYGY_PATH=${SYZYGY_PATH:-$HOME/syzygy/3-4-5}
+if [ ! -f "$SYZYGY_PATH/KQvK.rtbw" ]; then
+	echo "warning: no tablebases at $SYZYGY_PATH -- eval adjudication only" >&2
+	unset SYZYGY_PATH
+else
+	# An incomplete set is worse than none: the engine is built -DNDEBUG, so
+	# Fathom's own asserts are gone and a truncated file reads as garbage.
+	n=$(ls -1 "$SYZYGY_PATH" | wc -l)
+	[ "$n" -eq 290 ] || echo "warning: $SYZYGY_PATH has $n files, expected 290" >&2
+fi
+
 OUT=$ROOT/data/$(date +%Y%m%d-%H%M%S)
 mkdir -p "$OUT"
 

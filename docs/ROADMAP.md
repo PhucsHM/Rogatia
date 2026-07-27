@@ -99,10 +99,16 @@ Bench depth was raised from 8 to 12 at the same time — the pruned tree made de
 
 Also fixed here: the corrupt PV lines carried over from Phase 3. Zero `Illegal PV move` warnings across all 720 games.
 
-### Phase 5 — Datagen (~1 week to write, then runs forever)
-~300 lines as an engine subcommand. No generic tool exists; every engine writes its own. 8 random opening plies (no book — deliberate diversity), 5000-node soft limit per move, quiet-position filter (drop in-check, and drop where `|static eval − qsearch eval| > ~60cp`), eval and Syzygy adjudication, viriformat output.
+### Phase 5 — Datagen ✅
+`rogatia datagen <out> <positions> [seed] [nodes]` in `src/datagen.cpp`, with `scripts/datagen.sh` launching one process per thread. 8 random opening plies (no book), openings over 1000cp discarded, 5000-node soft limit per move, the quiet filter (drop in-check, drop where `|static eval − qsearch eval| > 60cp`), eval adjudication at 2000cp held four plies, and Syzygy hard adjudication.
 
-~4k–10k positions/sec on 16 threads ≈ 350M–850M/day. **Measure it; don't trust the estimate.**
+**Measured: 6,118 positions/sec on 16 workers ≈ 528M/day.** Inside the 4k–10k estimate, so the 100M positions Phase 6 needs is ~4.5 hours, not a day.
+
+**Deviation — bulletformat, not viriformat.** 32 B/position is 3.2 GB for 100M against 1.7 TB free, and it is the struct `bullet` consumes with no conversion step. Viriformat's ~8x compression buys storage that is not scarce. Layout was verified against `bulletformat/src/chess.rs`, not reconstructed: the record is stored **already flipped to the side to move**, which is why it carries no side-to-move field.
+
+**Syzygy via Fathom** (MIT), vendored verbatim in `src/fathom/`. 3-4-5 set, 290 files / 939 MB, at `$SYZYGY_PATH` (default `~/syzygy/3-4-5`). Hard adjudication cut the draw share from 33.7% to 27.3% and ended games sooner — 279 games per 20k positions against 241 without it — because dead endings stop being ground out to a 50-move draw.
+
+**Validation:** every record decodes back to a legal position (two kings, king squares consistent, no pawns on rank 1/8), and score correlates with result as a clean sigmoid (−800cp → 2% score, +800cp → 97%), which is what catches a perspective-flip bug.
 
 From here the CPU generates data 24/7 in the background while search development continues. These are not sequential.
 

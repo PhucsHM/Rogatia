@@ -57,7 +57,7 @@ bench 4712710
 
 ## Current status
 
-**Phases 1–4 complete. Phase 5 (datagen) is next.** See `docs/ROADMAP.md` for the full arc.
+**Phases 1–5 complete. Phase 6 (first NNUE) is next.** See `docs/ROADMAP.md` for the full arc.
 
 Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake, movegen (perft 37/37, 626,461,214 nodes bit-exact), fail-soft PVS with iterative deepening and aspiration windows, quiescence with SEE and delta pruning, bucketed TT, killers, butterfly history, continuation history, null move, LMR, RFP, LMP, SEE pruning, tapered PeSTO PSQT, full UCI, 24 search constants exposed as UCI spin options (`src/tunable.h`), deterministic bench (5,356,740 at the new default depth 12).
 
@@ -73,9 +73,11 @@ Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake,
 
 Reproduce: `CONCURRENCY=6 scripts/gauntlet.sh 240 ./rogatia`. Full protocol in `docs/TESTING.md`.
 
-Next concrete task: **Phase 5, datagen** — an engine subcommand, ~300 lines: 8 random opening plies, 5000-node soft limit per move, quiet-position filter, eval and Syzygy adjudication, viriformat output. It runs on this box 24/7 once written. Baseline for the next SPRT is the `base-phase4` tag (bench 5,356,740 at depth 12).
+Next concrete task: **Phase 6, the first NNUE** — `(768 → 256)x2 → 1` on ~100M positions, trained with `bullet` on the 3090. Generate the data first: `scripts/datagen.sh 7000000 16 5000` is ~4.5 hours for 100M. `bullet` is not installed yet and needs a Rust/CUDA toolchain, neither of which is on this box.
 
 Fixed in Phase 4: the corrupt PV lines. 720 gauntlet games produced zero `Illegal PV move` warnings from Rogatia.
+
+**Datagen (Phase 5):** `scripts/datagen.sh [positions-per-worker] [workers] [nodes]`, one process per thread, output in **bulletformat** (32 B/position) under `data/`, which is gitignored. Syzygy 3-4-5 lives at `~/syzygy/3-4-5` (290 files, 939 MB) and is picked up via `$SYZYGY_PATH`. **An incomplete tablebase set is worse than none** — the engine builds `-DNDEBUG`, so Fathom's own asserts are gone and a truncated file reads as garbage; `datagen.sh` checks the file count for exactly this reason.
 
 ### Mental model for what follows
 

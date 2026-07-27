@@ -55,6 +55,9 @@ The line is procedural, not just legal. Read a technique, close the file, implem
 | Time management (soft/hard split) | CPW: Time Management | Flat clock fraction, move overhead, soft checked between iterations and hard every 1024 nodes |
 | UCI protocol | Stefan-Meyer Kahlen, UCI specification (public protocol document) | Protocol text only; no engine's implementation consulted |
 | Deterministic bench | OpenBench README (public harness requirement) | Position set generated and legality-checked with this engine's own movegen |
+| Self-play datagen | CPW: Automated Tuning; the datagen sections of Stormphrax and Viridithas READMEs | Structure is the field-standard loop (random plies, node-limited self-play, quiet filter, adjudication); no code read or adapted |
+| bulletformat record layout | `jw1912/bulletformat` `src/chess.rs` (MIT) | **Layout only** -- a wire format, not an implementation. Fields transcribed deliberately, because a format has to match byte for byte to be worth anything. The packing code in `src/datagen.cpp` is our own |
+| Syzygy probing | **Fathom** (`jdart1/Fathom`, MIT) | **Vendored verbatim** in `src/fathom/`, not reimplemented. `tbchess.c` kept as `.c` because `tbprobe.cpp` `#include`s it textually. Renamed `.c` to `.cpp` only so the existing Makefile rule compiles it; no source edits. LICENSE copied alongside |
 
 ---
 

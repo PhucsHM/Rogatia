@@ -31,7 +31,7 @@ SRCDIR    := src
 TESTDIR   := tests
 BUILDDIR  := build
 
-SOURCES   := $(wildcard $(SRCDIR)/*.cpp)
+SOURCES   := $(wildcard $(SRCDIR)/*.cpp) $(wildcard $(SRCDIR)/fathom/*.cpp)
 OBJECTS   := $(patsubst $(SRCDIR)/%.cpp,$(BUILDDIR)/%.o,$(SOURCES))
 DEPS      := $(OBJECTS:.o=.d)
 
@@ -40,7 +40,7 @@ PERFT_SRC := $(TESTDIR)/run_perft.cpp
 PERFT_OBJ := $(filter-out $(BUILDDIR)/main.o,$(OBJECTS))
 
 WARNINGS  := -Wall -Wextra -Wcast-qual -Wshadow -Wno-unused-parameter
-CXXFLAGS  := -std=c++20 $(WARNINGS) -MMD -MP
+CXXFLAGS  := -std=c++20 $(WARNINGS) -MMD -MP -I$(SRCDIR)/fathom
 LDFLAGS   :=
 
 ifneq ($(EVALFILE),none)
@@ -78,6 +78,7 @@ $(EXE): $(OBJECTS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
 $(BUILDDIR)/%.o: $(SRCDIR)/%.cpp | $(BUILDDIR)
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(BUILDDIR):

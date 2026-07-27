@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -21,6 +22,10 @@
 #include "position.h"
 #include "search.h"
 #include "tt.h"
+
+// Fathom (jdart1/Fathom, MIT) vendored verbatim in src/fathom.  Compiled as
+// C++ because it happens to be valid C++20; nothing in it was edited.
+#include "tbprobe.h"
 
 namespace rogatia::datagen {
 
@@ -153,6 +158,39 @@ int count_legal(Position& pos) {
     return n;
 }
 
+// Syzygy hard adjudication.  Returns 0/1/2 white-relative, or -1 when the
+// position cannot be probed -- which is most of them: Fathom's WDL probe
+// refuses anything with castling rights or a non-zero fifty-move counter, so
+// in practice this fires on the ply right after the capture that reached the
+// tablebase.  That is exactly when it is worth firing.
+int probe_syzygy(const Position& pos) {
+    if (TB_LARGEST == 0 || unsigned(popcount(pos.pieces())) > TB_LARGEST)
+        return -1;
+    if (pos.castling_rights() != NO_CASTLING || pos.rule50_count() != 0)
+        return -1;
+
+    const unsigned wdl = tb_probe_wdl(
+        pos.pieces(WHITE), pos.pieces(BLACK), pos.pieces(KING), pos.pieces(QUEEN),
+        pos.pieces(ROOK), pos.pieces(BISHOP), pos.pieces(KNIGHT), pos.pieces(PAWN),
+        0, 0, pos.ep_square() == SQ_NONE ? 0u : unsigned(pos.ep_square()),
+        pos.side_to_move() == WHITE);
+
+    if (wdl == TB_RESULT_FAILED)
+        return -1;
+
+    // A cursed win and a blessed loss are both draws under the fifty-move rule,
+    // which is the rule the games are actually played under.
+    int stmResult;
+    if (wdl == TB_WIN)
+        stmResult = 2;
+    else if (wdl == TB_LOSS)
+        stmResult = 0;
+    else
+        stmResult = 1;
+
+    return (pos.side_to_move() == WHITE) ? stmResult : 2 - stmResult;
+}
+
 Move random_legal(Position& pos, Rng& rng) {
     Move legal[MAX_MOVES];
     int  n = 0;
@@ -172,6 +210,16 @@ void run(const Config& cfg) {
     }
 
     TT.resize(DATAGEN_HASH_MB);
+
+    // Path comes from the environment rather than another positional argument:
+    // it is the same for every worker in a fleet and never varies per run.
+    if (const char* tbPath = std::getenv("SYZYGY_PATH")) {
+        if (tb_init(tbPath) && TB_LARGEST > 0)
+            std::fprintf(stderr, "syzygy: %u-piece tablebases from %s\n", TB_LARGEST, tbPath);
+        else
+            std::fprintf(stderr, "syzygy: no tablebases found at %s -- eval adjudication only\n",
+                         tbPath);
+    }
 
     Rng rng{cfg.seed};
 
@@ -214,6 +262,15 @@ void run(const Config& cfg) {
         for (int ply = 0; ply < MAX_GAME_PLIES; ++ply) {
             if (pos.is_game_draw())
                 break;
+
+            // Hard adjudication: a tablebase result is the truth, and playing
+            // the ending out generates hundreds of positions that teach the net
+            // nothing it cannot get from the tablebase.
+            const int tb = probe_syzygy(pos);
+            if (tb >= 0) {
+                whiteResult = tb;
+                break;
+            }
 
             if (count_legal(pos) == 0) {
                 // Checkmate is a loss for the side to move; stalemate is a draw.
