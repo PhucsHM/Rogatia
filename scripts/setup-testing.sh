@@ -45,8 +45,9 @@ E=$ROOT/tools/engines
 
 if [ ! -x "$E/toad-1.0.0" ]; then
 	get "$TMP/toad.tar.gz" https://github.com/dannyhammer/toad/releases/download/v1.0.0/toad_v1.0.0_x86_64-unknown-linux-musl.tar.gz
-	tar -xzf "$TMP/toad.tar.gz" -C "$TMP"
-	mv "$(find "$TMP" -type f -name 'toad*' ! -name '*.tar.gz')" "$E/toad-1.0.0"
+	# The tarball is flat: toad, README.md, CHANGELOG.md. Take only the binary.
+	tar -xzf "$TMP/toad.tar.gz" -C "$TMP" toad
+	mv "$TMP/toad" "$E/toad-1.0.0"
 fi
 
 if [ ! -x "$E/goldfish-2.1.1" ]; then
@@ -56,6 +57,9 @@ fi
 if [ ! -x "$E/blunder-8.5.5" ]; then
 	get "$TMP/blunder.zip" https://github.com/algerbrex/blunder/releases/download/v8.5.5/blunder-8.5.5.zip
 	unzip -qo "$TMP/blunder.zip" -d "$TMP"
+	# ponytail: -avx2 to match what the laptop already has. CCRL rates a
+	# "64-bit" build without saying which; -avx2 may be slightly stronger than
+	# the rated one, which would make Blunder's anchor read a little low.
 	mv "$TMP/blunder-8.5.5/linux/blunder-8.5.5-avx2" "$E/blunder-8.5.5"
 fi
 

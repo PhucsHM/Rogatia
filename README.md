@@ -2,7 +2,7 @@
 
 A UCI chess engine written from scratch in C++20, optimized for blitz time controls (5+0 and faster).
 
-**Status: early development.** Phases 1–3 complete — move generation is perft-exact (37/37, 626,461,214 nodes), the engine plays legal chess over UCI with a PVS search and a tapered PSQT evaluation, and the fastchess test harness is up. First measurement: **~2197 ±29 CCRL Blitz**, from 720 games against three CCRL-rated anchors. Next milestone is the core pruning set. See [`docs/ROADMAP.md`](docs/ROADMAP.md) and [`docs/TESTING.md`](docs/TESTING.md).
+**Status: early development.** Phases 1–3 complete — move generation is perft-exact (37/37, 626,461,214 nodes), the engine plays legal chess over UCI with a PVS search and a tapered PSQT evaluation, and the fastchess test harness is up. First measurement: **~2197 ±29 CCRL Blitz**, from 720 games against three CCRL-rated anchors (which individually imply 2089–2278 — treat the ranking as firmer than the number). Next milestone is the core pruning set. See [`docs/ROADMAP.md`](docs/ROADMAP.md) and [`docs/TESTING.md`](docs/TESTING.md).
 
 ## Goals
 

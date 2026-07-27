@@ -17,7 +17,9 @@ ENGINE=$(bin "${2:-$ROOT/rogatia-base}")
 # name : CCRL Blitz (40/4) rating : that rating's own error bar.
 # 1-CPU 64-bit entries, list read 2026-07-27 from
 # https://computerchess.org.uk/ccrl/404/cgi/compare_engines.cgi
-# None of these three versions appear on CCRL 40/15.
+# None of these three versions appears on CCRL 40/15, so Blitz is the only
+# anchor available. The Blunder binary is the -avx2 build; CCRL's "64-bit"
+# entry may be a slower one, which would read its anchor slightly low.
 ANCHORS="toad-1.0.0:1776:18 goldfish-2.1.1:2252:16 blunder-8.5.5:2664:11"
 
 OUT=$ROOT/sprt-results/gauntlet-$(date +%Y%m%d-%H%M%S)
