@@ -70,14 +70,16 @@ Fail-soft PVS, iterative deepening, aspiration windows, quiescence with SEE and 
 
 **Gate passed:** builds clean, bench deterministic (54,095,910) across `x86-64`, `v2`, `v3`, `native`, and PEXT builds. Plays legal games via UCI.
 
-**Estimated ~2000–2400 Elo — unmeasured.** No SPRT harness exists yet, so this is an estimate, not a result.
-
-### Phase 3 — Testing infrastructure ⚠️ NEXT, before any search feature
-fastchess SPRT at 8+0.08, `-concurrency 8`, pentanomial, OpenBench books. Expose every search constant as a UCI option in dev builds so SPSA can drive them later — the cheapest decision on this list.
+### Phase 3 — Testing infrastructure ✅
+fastchess SPRT at 8+0.08, `-concurrency 8`, pentanomial, OpenBench books. `scripts/setup-testing.sh` reproduces the whole harness on a fresh machine; `scripts/sprt.sh` and `scripts/gauntlet.sh` drive it; `docs/TESTING.md` documents it.
 
 This comes *before* the features it validates. Published Elo figures are order- and engine-dependent; only your own SPRT numbers mean anything. Zero Elo gained here, and skipping it is how engine projects die with a stack of patches that each "obviously" helped and collectively lost Elo.
 
-**Gate:** a patch can be SPRT-tested end to end and produce a verdict.
+**Gate passed:** harness self-test on identical binaries reports no difference; 720-game gauntlet against three CCRL-rated anchors produced the first real measurement.
+
+**Measured: ~2197 +/- 29 CCRL Blitz** (Toad 1.0.0 85.8%, Goldfish 2.1.1 44.6%, Blunder 8.5.5 9.8%, 240 games each). The estimate that stood here before was 2000–2400; the measurement lands inside it. Table and caveats in `CLAUDE.md`.
+
+**Deferred to Phase 4:** exposing every search constant as a UCI option so SPSA can drive it later. It is a `src/` change and Phase 3 deliberately added no engine code — do it with the first pruning patch, not after fifty of them.
 
 ### Phase 4 — Core pruning (~3–4 weeks) → **~2400–2500**
 The highest-value subset of modern search, and the minimum needed to be a decent teacher for the first network:

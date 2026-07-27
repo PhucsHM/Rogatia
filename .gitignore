@@ -23,6 +23,13 @@ data/
 logs/
 sprt-results/
 
+# Testing harness: fastchess, opening books, reference engines. Fetched by
+# scripts/setup-testing.sh, never committed -- the UHO book alone is 175 MB and
+# anything committed to git history is effectively permanent.
+tools/
+books/
+config.json
+
 .vscode/
 .idea/
 .DS_Store

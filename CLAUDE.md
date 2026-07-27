@@ -8,12 +8,14 @@ Read this before touching anything. The full phased roadmap with Elo gates is in
 
 ## Two machines
 
-| Machine | Role |
-|---|---|
-| **Laptop** (Windows + WSL) | Writing code, correctness work, perft. No compute budget. |
-| **Home box** — Ryzen 7 7700 (8c/16t, Zen 4), 32 GB, RTX 3090, CachyOS, 24/7 | **All SPRT testing, all datagen, all NNUE training.** This is where the project actually progresses. |
+| Machine | CPU / GPU | Role |
+|---|---|---|
+| **Laptop** — Ryzen AI 9 465 (10c/20t), RTX 5060 (8 GB), Windows | 10 physical cores | **Primary SPRT machine** — it has *more* physical cores than the home box, so it is the faster tester. Also code, correctness, perft. |
+| **Home box** — Ryzen 7 7700 (8c/16t, Zen 4), 32 GB, RTX 3090 (24 GB), CachyOS, 24/7 | 8 physical cores | **All NNUE training and all datagen.** The 3090's 24 GB is the thing the laptop genuinely cannot match. Runs SPRT too, on whatever is idle. |
 
-If you are running on the home box: your job is the compute-heavy work. The CPU runs SPRT and datagen; the GPU trains nets. They overlap — a net can train while an SPRT runs.
+The split is by *what each machine is better at*, not by which one is "the dev box". CPU cores → SPRT (laptop wins 10 vs 8). VRAM → training (home box wins 24 GB vs 8 GB). The home box's real advantage is that it is on 24/7, so long datagen runs live there.
+
+**The two machines run different tests concurrently, never the same test.** fastchess has no distributed mode and merging two PGN sets breaks SPRT's sequential stopping rule. Two verdicts per day, not one verdict twice as fast. See `docs/TESTING.md`.
 
 ---
 
@@ -55,13 +57,25 @@ bench 4712710
 
 ## Current status
 
-**Phases 1 and 2 complete. Phase 3 is next.** See `docs/ROADMAP.md` for the full arc.
+**Phases 1, 2 and 3 complete. Phase 4 (core pruning) is next.** See `docs/ROADMAP.md` for the full arc.
 
 Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake, movegen (perft 37/37, 626,461,214 nodes bit-exact), fail-soft PVS with iterative deepening and aspiration windows, quiescence with SEE and delta pruning, bucketed TT, killers, butterfly history, tapered PeSTO PSQT, full UCI, deterministic bench (54,095,910).
 
-**Estimated ~2000–2400 Elo, unmeasured.** No SPRT harness exists, so that is an estimate and nothing more. Do not quote it as a result.
+**Measured: ~2197 +/- 29 CCRL Blitz.** 720 games at 8+0.08, `8moves_v3.epd`, Hash=16, Threads=1, concurrency 8, laptop, 2026-07-27. Every game ended in a chess result — no time losses, no illegal moves.
 
-Next concrete task: **stand up the SPRT harness before adding a single search feature.** Every Elo figure in an article or another engine's release notes is order- and engine-dependent. Only your own SPRT numbers mean anything, and skipping this is how engine projects die with a stack of patches that each "obviously" helped and collectively lost Elo.
+| Opponent | CCRL Blitz | Games | W-L-D | Score | Implied Rogatia |
+|---|---|---|---|---|---|
+| Toad 1.0.0 | 1776 +/- 18 | 240 | 191-19-30 | 85.8% | 2089 +/- 57 |
+| Goldfish 2.1.1 | 2252 +/- 16 | 240 | 73-99-68 | 44.6% | 2214 +/- 40 |
+| Blunder 8.5.5 | 2664 +/- 11 | 240 | 7-200-33 | 9.8% | 2278 +/- 60 |
+
+Inverse-variance weighted: **2197 +/- 29**. The three anchors disagree by 189 points — far more than their own error bars — which is the usual Elo-model compression at wide rating gaps, not a harness fault. Treat 2197 as approximate and the *ranking* (above Toad, just under Goldfish, far under Blunder) as the solid part. Re-anchor at phase boundaries, not per patch.
+
+Reproduce: `scripts/gauntlet.sh 240 ./rogatia`. Full protocol in `docs/TESTING.md`.
+
+Next concrete task: **Phase 4, core pruning** — null move, LMR, RFP, LMP, SEE pruning, continuation history. Every one of them goes through `scripts/sprt.sh` against the `base-phase3` tag. Only your own SPRT numbers mean anything; skipping that is how engine projects die with a stack of patches that each "obviously" helped and collectively lost Elo.
+
+Known issue, not yet fixed: the engine emits **corrupt PV lines** (repeated moves, moves continuing past checkmate). fastchess warns but plays the `bestmove`, so it does not affect results. Worth a look in Phase 4.
 
 ### Mental model for what follows
 
@@ -75,7 +89,7 @@ The phase order deliberately front-loads the first net to roughly month 2, after
 
 ## SPRT protocol
 
-Harness is **fastchess** (MIT, replaced cutechess-cli; fishtest migrated to it).
+Harness is **fastchess** (MIT, replaced cutechess-cli; fishtest migrated to it). Wrapped by `scripts/sprt.sh` and `scripts/gauntlet.sh`; `scripts/setup-testing.sh` installs it on a fresh box. **Read `docs/TESTING.md` before running a test** — bounds, output interpretation, the baseline-tag convention and the two-machine split live there.
 
 ```bash
 fastchess \
@@ -90,10 +104,10 @@ fastchess \
 - **`-concurrency 8`, not 16.** SMT siblings distort timing at 8+0.08 and cause spurious losses on time. Use physical cores only.
 - **Time control 8+0.08** for the SPRT. Verify passing patches at 20+0.2. Do not chase LTC-only patches — this engine is for blitz, so short-TC tuning bias is *aligned* with the goal.
 - **Bounds by strength:** `[0.00, 10.00]` while under ~2800, `[0.00, 5.00]` mid, `[0.00, 3.00]` above ~3300. Non-regressions `[-10.00, 0.00]`. Always alpha=beta=0.05.
-- **Books:** `8moves_v3.pgn` while weak; switch to `UHO_Lichess_4852_v1.epd` above ~2800. Both from OpenBench's `Books/`.
+- **Books:** `8moves_v3.epd` while weak; switch to `UHO_Lichess_4852_v1.epd` above ~2800. Both from OpenBench's `Books/`, fetched by `scripts/setup-testing.sh`.
 - Pentanomial (game-pair) statistics — fastchess does this by default and it converges meaningfully faster than trinomial.
 
-**Throughput:** ~1,200–1,400 games/hour on 8 cores ≈ 30k games/day ≈ **one decisive test per day.** That is the real constraint on this project, not ideas. Plan accordingly.
+**Throughput (measured, laptop, 8+0.08, concurrency 8):** **~1,180 games/hour** ≈ 28k games/day ≈ **one decisive test per day.** That is the real constraint on this project, not ideas. Plan accordingly.
 
 **Do not SPRT the textbook.** Standard techniques (PVS, null move, LMR, the history stack) are known-good from the literature — implement, sanity-check, move on. Spend SPRT budget on tuning and genuinely novel changes.
 
