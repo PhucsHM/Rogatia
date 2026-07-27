@@ -73,6 +73,11 @@ struct Stack {
     Move  killers[2]  = {MOVE_NONE, MOVE_NONE};
     Score staticEval  = VALUE_NONE;
     Move  currentMove = MOVE_NONE;
+    // The piece moved at this ply and where it landed -- the key continuation
+    // history is indexed by.  NO_PIECE means "no real move here" (the plies
+    // below the root, and a null move), which suppresses the lookup.
+    Piece  movedPiece = NO_PIECE;
+    Square movedTo    = SQ_A1;
 };
 
 // The root sits at stack[ROOT_OFFSET], not stack[0]: "improving" reads
@@ -91,6 +96,10 @@ struct Worker {
     Score rootScore    = VALUE_NONE;
 
     int history[COLOR_NB][SQUARE_NB][SQUARE_NB] = {};
+
+    // [piece moved N plies ago][where it landed][piece moved now][where it
+    // lands].  4 MB, so it lives in the Worker rather than on the stack.
+    int contHist[PIECE_NB][SQUARE_NB][PIECE_NB][SQUARE_NB] = {};
 
     Move pv[MAX_PLY][MAX_PLY] = {};
     int  pvLen[MAX_PLY]       = {};
@@ -123,6 +132,21 @@ void update_history(int& slot, int bonus) {
 }
 
 int history_bonus(int depth) { return std::min(300 * depth - 250, 2400); }
+
+// The continuation-history slot for playing `pc` to `to` after the move made
+// at `prev`.  Null when that ply holds no real move.
+int* cont_hist(const Stack* prev, Piece pc, Square to) {
+    if (prev->movedPiece == NO_PIECE)
+        return nullptr;
+    return &W.contHist[prev->movedPiece][prev->movedTo][pc][to];
+}
+
+// Bonus (or malus) to both offsets at once -- they are always updated together.
+void update_cont_hist(const Stack* ss, Piece pc, Square to, int bonus) {
+    for (int off : {1, 2})
+        if (int* slot = cont_hist(ss - off, pc, to))
+            update_history(*slot, bonus);
+}
 
 // -------------------------------------------------------------------- SEE --
 
@@ -227,7 +251,11 @@ int score_move(const Position& pos, Move m, Move ttMove, const Stack* ss) {
     if (m == ss->killers[1])
         return SCORE_KILLER2;
 
-    return W.history[pos.side_to_move()][from_sq(m)][to_sq(m)];
+    int score = W.history[pos.side_to_move()][from_sq(m)][to_sq(m)];
+    for (int off : {1, 2})
+        if (const int* slot = cont_hist(ss - off, pos.piece_on(from_sq(m)), to_sq(m)))
+            score += *slot;
+    return score;
 }
 
 // Selection sort, one pick per iteration: most move loops end on a cutoff long
@@ -481,6 +509,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         const int R = 3 + depth / 3 + std::min((staticEval - beta) / 200, 3);
 
         ss->currentMove = MOVE_NULL;
+        ss->movedPiece  = NO_PIECE;
         pos.make_null_move();
         const Score score =
             -search<false>(pos, ss + 1, -beta, -beta + 1, depth - R, !cutNode);
@@ -539,6 +568,8 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             quietsTried[quietCount++] = m;
 
         ss->currentMove = m;
+        ss->movedPiece  = pos.piece_on(from_sq(m));
+        ss->movedTo     = to_sq(m);
         pos.make_move(m);
         TT.prefetch(pos.key());
 
@@ -608,15 +639,18 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
                         }
 
                         const int bonus = history_bonus(depth);
-                        update_history(W.history[pos.side_to_move()][from_sq(m)][to_sq(m)], bonus);
+                        update_history(W.history[us][from_sq(m)][to_sq(m)], bonus);
+                        update_cont_hist(ss, ss->movedPiece, to_sq(m), bonus);
 
                         // Malus: the quiets that were tried first and did not
                         // cut were, on this evidence, ordered too high.
-                        for (int q = 0; q < quietCount; ++q)
-                            if (quietsTried[q] != m)
-                                update_history(W.history[pos.side_to_move()][from_sq(quietsTried[q])]
-                                                        [to_sq(quietsTried[q])],
-                                               -bonus);
+                        for (int q = 0; q < quietCount; ++q) {
+                            const Move q_ = quietsTried[q];
+                            if (q_ == m)
+                                continue;
+                            update_history(W.history[us][from_sq(q_)][to_sq(q_)], -bonus);
+                            update_cont_hist(ss, pos.piece_on(from_sq(q_)), to_sq(q_), -bonus);
+                        }
                     }
                     break;
                 }
@@ -790,6 +824,7 @@ void iterative_deepening(Position& pos, int maxDepth) {
 void clear() {
     TT.clear();
     std::memset(W.history, 0, sizeof(W.history));
+    std::memset(W.contHist, 0, sizeof(W.contHist));
     W.rootBestMove = MOVE_NONE;
     W.rootScore    = VALUE_NONE;
 }
