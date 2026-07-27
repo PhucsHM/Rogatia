@@ -59,7 +59,7 @@ bench 4712710
 
 **Phases 1–5 complete. Phase 6 (first NNUE) is next.** See `docs/ROADMAP.md` for the full arc.
 
-Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake, movegen (perft 37/37, 626,461,214 nodes bit-exact), fail-soft PVS with iterative deepening and aspiration windows, quiescence with SEE and delta pruning, bucketed TT, killers, butterfly history, continuation history, null move, LMR, RFP, LMP, SEE pruning, tapered PeSTO PSQT, full UCI, 24 search constants exposed as UCI spin options (`src/tunable.h`), deterministic bench (5,356,740 at the new default depth 12).
+Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake, movegen (perft 37/37, 626,461,214 nodes bit-exact), fail-soft PVS with iterative deepening and aspiration windows, quiescence with SEE and delta pruning, bucketed TT, killers, butterfly history, continuation history, null move, LMR, RFP, LMP, SEE pruning, futility pruning, razoring, history pruning of quiets, internal iterative reduction, tapered PeSTO PSQT, full UCI, 31 search constants exposed as UCI spin options (`src/tunable.h`), deterministic bench (**5,001,521** at depth 12).
 
 **Measured: ~2799 +/- 42 CCRL Blitz.** 720 games at 8+0.08, `8moves_v3.epd`, Hash=16, Threads=1, concurrency 6, home box, 2026-07-27. Every game ended in a chess result — no time losses, no illegal moves, and no corrupt PV warnings.
 
@@ -75,30 +75,45 @@ Reproduce: `CONCURRENCY=6 scripts/gauntlet.sh 240 ./rogatia`. Full protocol in `
 
 Next concrete task: **Phase 6, the first NNUE** — `(768 → 256)x2 → 1` on ~100M positions, trained with `bullet` on the 3090. Generate the data first: `scripts/datagen.sh 7000000 16 5000` is ~4.5 hours for 100M. `bullet` is not installed yet and needs a Rust/CUDA toolchain, neither of which is on this box.
 
-Fixed in Phase 4: the corrupt PV lines. 720 gauntlet games produced zero `Illegal PV move` warnings from Rogatia.
+**Partly fixed in Phase 4: the corrupt PV lines.** The `Illegal PV move` class is
+genuinely gone — 720 gauntlet games and a 2,308-game SPRT both produced zero.
+A second class survives: **`PV continues after checkmate`, ~0.4 per game**, seen
+from both engines in the 2026-07-28 SPRT, so it predates Phase 4's fix rather
+than being caused by it. Harmless to results — fastchess warns and plays the
+`bestmove` — but it means PV construction still has a gap. Not yet diagnosed.
 
-### In flight — branch `phase4-fixes`, nothing merged
+### Merged 2026-07-28 — second pruning set, SPRT +14.61 +/- 10.08
 
-Ten commits sitting on a branch, **none SPRT'd**. Perft is bit-exact on every
-one and each commit message carries its own bench, but bench is a fingerprint,
-not a strength measurement — do not merge any of these on the node count alone.
-The queue and the per-patch reasoning are in the branch's commit messages.
+2,308 games at 8+0.08, LOS 99.78%, LLR 2.97 on `[0.00, 10.00]`, zero illegal
+moves and zero time losses. Bench 5,356,740 → **5,001,521**.
 
-Four are bench-neutral (bench identical to the commit before, so they need no
-SPRT — only a non-regression sanity check if you want one): slider blockers for
-the side to move only, history tables narrowed to `int16`, and the two datagen
-label fixes. The rest change search and each needs its own test.
+Landed: futility pruning at the child node, razoring verified by quiescence,
+history pruning of quiets, internal iterative reduction, LMR reducing on the
+full history statistic, two datagen label fixes, en passant hashed only when a
+pawn can capture, repetition bounded by plies-from-null, slider blockers for
+the side to move only, history tables narrowed to `int16`.
 
-Two datagen bugs are fixed there and **both matter for the next dataset, not the
-one currently generating**: the "abandon the game" path was emitting a
-fabricated draw result, and adjudication counted `|score|` without regard to
-sign so an oscillating position was labelled by a coin flip.
+Tested as one patch, deliberately. These techniques overlap — futility, LMP,
+history pruning and razoring all prune quiets at low depth — so per-patch
+numbers against a base missing the others would not have summed to this anyway.
 
-Also worth knowing before the next run: the node budget has a **granularity and
-floor of 1024** (`check_stop` only tests the limit when `(nodes & 1023) == 0`).
-`5000` really searches `5120`, and anything below 1024 is identical to 1024 —
-verified by three budgets producing byte-identical output. Pick budgets on 1024
-boundaries so the script says what it does.
+**Not merged:** the ttPv reduction exemption (branch `phase4-fixes`). It cost
+17% more nodes alone and the flag is sticky, so it accumulates through the table
+and weakens LMR everywhere. Worth its own test, not a bundle seat.
+
+**Pending, unverified:** staged move generation on branch `staged-movepick` —
+search the TT move before generating anything. Contrary to first appearances it
+is **not** bench-neutral: scoring now runs after the TT move's subtree, which
+writes the very history tables `score_move` reads, so the remaining quiets
+reorder. Branch `staged-scaffold` exists to separate a loop bug from that
+effect — it keeps eager generation and must bench exactly 5,001,521.
+
+Also worth knowing before the next datagen run: the node budget has a
+**granularity and floor of 1024** (`check_stop` only tests the limit when
+`(nodes & 1023) == 0`). `5000` really searches `5120`, and anything below 1024
+is identical to 1024 — verified by three budgets producing byte-identical
+output. Not a cost: it is a quality dial, so 5120 is more work *and* better
+labels. Pick budgets on 1024 boundaries so the script says what it does.
 
 **Datagen (Phase 5):** `scripts/datagen.sh [positions-per-worker] [workers] [nodes]`, one process per thread, output in **bulletformat** (32 B/position) under `data/`, which is gitignored. Syzygy 3-4-5 lives at `~/syzygy/3-4-5` (290 files, 939 MB) and is picked up via `$SYZYGY_PATH`. **An incomplete tablebase set is worse than none** — the engine builds `-DNDEBUG`, so Fathom's own asserts are gone and a truncated file reads as garbage; `datagen.sh` checks the file count for exactly this reason.
 
