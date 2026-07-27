@@ -252,7 +252,8 @@ void run(const Config& cfg) {
 
         // A cheap look before committing a whole game to the random opening.
         const search::Result probe = search::search_fixed_nodes(pos, cfg.nodes);
-        if (probe.best == MOVE_NONE || std::abs(probe.score) > OPENING_REJECT)
+        if (probe.best == MOVE_NONE || probe.score == VALUE_NONE
+            || std::abs(probe.score) > OPENING_REJECT)
             continue;
 
         // ------------------------------------------------------- play --
@@ -280,7 +281,10 @@ void run(const Config& cfg) {
             }
 
             const search::Result r = search::search_fixed_nodes(pos, cfg.nodes);
-            if (r.best == MOVE_NONE)
+            // No completed iteration means no score to label with -- the node
+            // budget is too small for this position.  Abandon the game rather
+            // than write a position labelled with a stale score.
+            if (r.best == MOVE_NONE || r.score == VALUE_NONE)
                 break;
 
             const Color us         = pos.side_to_move();

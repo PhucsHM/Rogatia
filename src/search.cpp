@@ -882,6 +882,12 @@ Result search_fixed_nodes(Position& pos, std::uint64_t nodes) {
     W.nodeLimit = nodes;
     W.start     = Clock::now();
 
+    // iterative_deepening only writes rootScore after an iteration completes,
+    // and nothing else clears it.  At 5000 nodes depth 1 always finishes, but
+    // the node budget is datagen's quality dial: turn it low enough that even
+    // depth 1 aborts and the caller would otherwise be handed the *previous*
+    // position's score with no way to tell.  VALUE_NONE says "no score".
+    W.rootScore    = VALUE_NONE;
     W.rootBestMove = first_legal_move(pos);
     W.pvLen[0]     = 0;
 
