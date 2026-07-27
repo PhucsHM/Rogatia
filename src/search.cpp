@@ -518,6 +518,15 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         ++moveCount;
 
         const bool isQuiet = !pos.is_capture(m) && type_of(m) != PROMOTION;
+
+        // Late move pruning: past a move count that grows with depth, the
+        // remaining quiets are ordered so far down that searching them at all
+        // is not worth it.  Only once something non-losing is already in hand,
+        // so a node can never be left without a score.
+        if (!PvNode && !inCheck && isQuiet && best > -VALUE_MATE_IN_MAX_PLY
+            && depth <= 8 && moveCount >= 3 + depth * depth / (2 - improving))
+            continue;
+
         if (isQuiet && quietCount < MAX_QUIETS_TRACKED)
             quietsTried[quietCount++] = m;
 
