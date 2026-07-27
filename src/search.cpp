@@ -423,6 +423,19 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
 
     (ss + 1)->killers[0] = (ss + 1)->killers[1] = MOVE_NONE;
 
+    // "Improving": our own static eval is better than it was two plies ago, so
+    // the position is trending our way and pruning can afford to be greedier.
+    // VALUE_NONE means that ply was in check and has no comparable eval.
+    const bool improving = !inCheck && (ss - 2)->staticEval != VALUE_NONE
+                        && staticEval > (ss - 2)->staticEval;
+
+    // Reverse futility pruning: we are so far above beta that even giving up
+    // the margin -- roughly a piece per ply of depth -- would not bring the
+    // score back down.  Fail high on the static eval without searching.
+    if (!PvNode && !inCheck && depth <= 8 && !is_mate_score(beta)
+        && staticEval - 75 * (depth - improving) >= beta)
+        return staticEval;
+
     Move moves[MAX_MOVES];
     int  scores[MAX_MOVES];
     const int count = int(generate<ALL>(pos, moves) - moves);
