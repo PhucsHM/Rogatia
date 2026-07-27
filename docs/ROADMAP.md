@@ -130,7 +130,21 @@ From here the CPU generates data 24/7 in the background while search development
 
 A smoke test on real datagen output reported **`Training on NVIDIA GeForce RTX 3090 (sm_86)`** at **~9.1M positions/sec**, so a 100M-position superbatch is ~11 seconds and the whole 40-superbatch schedule is under ten minutes. **Training is not the bottleneck; datagen is** — which is why datagen runs 24/7 and this phase is cheap to repeat.
 
-`examples/simple.rs` is already this exact architecture (`Chess768` inputs, `(768 → HIDDEN)x2 → 1`, `DirectSequentialDataLoader`), so Phase 6 starts by editing it rather than writing a trainer.
+`examples/simple.rs` is already this exact architecture (`Chess768` inputs, `(768 → HIDDEN)x2 → 1`, `DirectSequentialDataLoader`), so Phase 6 starts by editing it rather than writing a trainer. Our config is `trainer/rogatia.rs`; copy it over `~/bullet/examples/simple.rs` to run it.
+
+**Quantised net layout** (`quantised.bin`, 394,816 bytes at HIDDEN=256), which the engine loader has to match exactly:
+
+| Section | Byte offset | Count | Quantisation |
+|---|---|---|---|
+| `l0w` | 0 | 196,608 `i16` — **column-major 256×768**, so a feature's 256 weights are contiguous | QA |
+| `l0b` | 393,216 | 256 `i16` | QA |
+| `l1w` | 393,728 | 512 `i16` | QB |
+| `l1b` | 394,752 | 1 `i16` | QA·QB |
+| padding | 394,754 | 62 bytes, the ASCII string `bullet` repeated to a 64-byte boundary | — |
+
+Inference: `screlu(x) = clamp(x, 0, QA)²`; `out = Σ screlu(acc_us[j])·l1w[j] + Σ screlu(acc_them[j])·l1w[256+j]`, then `/= QA`, `+= l1b`, `*= SCALE`, `/= QA·QB`.
+
+**Scaffold net trained 2026-07-27** on the first 10.2M datagen positions, 20 superbatches in 23 seconds, final loss 0.0517. It is far too weak to gate on — it exists so the C++ inference can be written and tested against a real file while datagen is still running. Retrain on the full set and swap the file.
 
 Build the **`-march` bench-determinism check here**, the moment inference first exists. NNUE accumulation order can differ between SIMD widths and silently break OpenBench eligibility. Trivial to catch with one code path; painful with three.
 
