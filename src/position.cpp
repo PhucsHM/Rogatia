@@ -305,9 +305,20 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
 }
 
 void Position::compute_checkers_and_blockers() {
-    st_.checkers = attackers_to(king_square(sideToMove_), pieces()) & pieces(~sideToMove_);
-    st_.blockers[WHITE] = slider_blockers(pieces(BLACK), king_square(WHITE), st_.pinners[WHITE]);
-    st_.blockers[BLACK] = slider_blockers(pieces(WHITE), king_square(BLACK), st_.pinners[BLACK]);
+    const Color us = sideToMove_;
+    st_.checkers   = attackers_to(king_square(us), pieces()) & pieces(~us);
+
+    // Side to move only.  is_legal() is the single consumer of blockers_ and it
+    // never asks for the other colour; pinned() and gives_check() have no
+    // callers anywhere.  This runs on every make_move, so the second pass was a
+    // full slider_blockers -- two pseudo-attack lookups and a sniper loop --
+    // computed, copied into BoardState and popped again without ever being read.
+    //
+    // The consequence is that blockers_[~us] and pinners_[~us] hold the values
+    // from the previous ply and are NOT valid for this position.  Anything that
+    // wants them back -- a gives_check() fast path for check extensions, say --
+    // has to restore the second pass with it.
+    st_.blockers[us] = slider_blockers(pieces(~us), king_square(us), st_.pinners[us]);
 }
 
 Bitboard Position::attackers_to(Square s, Bitboard occ) const {
