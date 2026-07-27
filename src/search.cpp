@@ -40,9 +40,10 @@ constexpr int MAX_QUIETS_TRACKED = 32;
 // ------------------------------------------------------------ search state --
 
 struct Stack {
-    int   ply        = 0;
-    Move  killers[2] = {MOVE_NONE, MOVE_NONE};
-    Score staticEval = VALUE_NONE;
+    int   ply         = 0;
+    Move  killers[2]  = {MOVE_NONE, MOVE_NONE};
+    Score staticEval  = VALUE_NONE;
+    Move  currentMove = MOVE_NONE;
 };
 
 // The root sits at stack[ROOT_OFFSET], not stack[0]: "improving" reads
@@ -436,6 +437,34 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         && staticEval - 75 * (depth - improving) >= beta)
         return staticEval;
 
+    // Null move pruning: hand the opponent a free move.  If the position is
+    // still above beta after that, it is good enough that searching our own
+    // moves properly is a waste.  The zugzwang case -- where being forced to
+    // move is itself the problem -- is guarded by requiring a piece on the
+    // board, since pawn endings are where a null move lies.
+    // ponytail: no verification search at high depth.  Upgrade path is a
+    // re-search at depth-R with null move disabled before trusting the cutoff.
+    if (!PvNode && !inCheck && depth >= 3 && staticEval >= beta
+        && (ss - 1)->currentMove != MOVE_NULL && !is_mate_score(beta)
+        && (pos.pieces(pos.side_to_move()) & ~pos.pieces(PAWN) & ~pos.pieces(KING))) {
+
+        const int R = 3 + depth / 3 + std::min((staticEval - beta) / 200, 3);
+
+        ss->currentMove = MOVE_NULL;
+        pos.make_null_move();
+        const Score score =
+            -search<false>(pos, ss + 1, -beta, -beta + 1, depth - R, !cutNode);
+        pos.unmake_null_move();
+
+        if (aborted())
+            return VALUE_DRAW;
+
+        // A mate score proved with a free move for the opponent is not a mate
+        // we can actually deliver; report the bound instead.
+        if (score >= beta)
+            return is_mate_score(score) ? beta : score;
+    }
+
     Move moves[MAX_MOVES];
     int  scores[MAX_MOVES];
     const int count = int(generate<ALL>(pos, moves) - moves);
@@ -462,6 +491,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         if (isQuiet && quietCount < MAX_QUIETS_TRACKED)
             quietsTried[quietCount++] = m;
 
+        ss->currentMove = m;
         pos.make_move(m);
         TT.prefetch(pos.key());
 
