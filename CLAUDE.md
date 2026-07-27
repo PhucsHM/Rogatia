@@ -57,25 +57,25 @@ bench 4712710
 
 ## Current status
 
-**Phases 1, 2 and 3 complete. Phase 4 (core pruning) is next.** See `docs/ROADMAP.md` for the full arc.
+**Phases 1–4 complete. Phase 5 (datagen) is next.** See `docs/ROADMAP.md` for the full arc.
 
-Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake, movegen (perft 37/37, 626,461,214 nodes bit-exact), fail-soft PVS with iterative deepening and aspiration windows, quiescence with SEE and delta pruning, bucketed TT, killers, butterfly history, tapered PeSTO PSQT, full UCI, deterministic bench (54,095,910).
+Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake, movegen (perft 37/37, 626,461,214 nodes bit-exact), fail-soft PVS with iterative deepening and aspiration windows, quiescence with SEE and delta pruning, bucketed TT, killers, butterfly history, continuation history, null move, LMR, RFP, LMP, SEE pruning, tapered PeSTO PSQT, full UCI, 24 search constants exposed as UCI spin options (`src/tunable.h`), deterministic bench (5,356,740 at the new default depth 12).
 
-**Measured: ~2197 +/- 29 CCRL Blitz.** 720 games at 8+0.08, `8moves_v3.epd`, Hash=16, Threads=1, concurrency 8, laptop, 2026-07-27. Every game ended in a chess result — no time losses, no illegal moves.
+**Measured: ~2799 +/- 42 CCRL Blitz.** 720 games at 8+0.08, `8moves_v3.epd`, Hash=16, Threads=1, concurrency 6, home box, 2026-07-27. Every game ended in a chess result — no time losses, no illegal moves, and no corrupt PV warnings.
 
 | Opponent | CCRL Blitz | Games | W-L-D | Score | Implied Rogatia |
 |---|---|---|---|---|---|
-| Toad 1.0.0 | 1776 +/- 18 | 240 | 191-19-30 | 85.8% | 2089 +/- 57 |
-| Goldfish 2.1.1 | 2252 +/- 16 | 240 | 73-99-68 | 44.6% | 2214 +/- 40 |
-| Blunder 8.5.5 | 2664 +/- 11 | 240 | 7-200-33 | 9.8% | 2278 +/- 60 |
+| Toad 1.0.0 | 1776 +/- 18 | 240 | 237-0-3 | 99.4% | saturated |
+| Goldfish 2.1.1 | 2252 +/- 16 | 240 | 223-2-15 | 96.0% | saturated |
+| Blunder 8.5.5 | 2664 +/- 11 | 240 | 138-49-53 | 68.5% | 2799 +/- 42 |
 
-Inverse-variance weighted: **2197 +/- 29**. The three anchors disagree by 189 points — far more than their own error bars — which is the usual Elo-model compression at wide rating gaps, not a harness fault. Treat 2197 as approximate and the *ranking* (above Toad, just under Goldfish, far under Blunder) as the solid part. Re-anchor at phase boundaries, not per patch.
+**This number rests on a single anchor and is weaker evidence than the 2197 it replaces.** Toad and Goldfish are now beaten so decisively that the Elo model returns nothing usable from them, so 2799 is Blunder's own rating plus one measured difference — no cross-check, no disagreement to average away. It also overshoots the Phase 4 gate (~2400–2500) by ~300 and lands at the Phase 6 target *before* NNUE, which is a large enough surprise to deserve suspicion rather than celebration. **Before Phase 6, replace the anchor set with three engines in the 2700–3000 band** so the next measurement has cross-checks again.
 
-Reproduce: `scripts/gauntlet.sh 240 ./rogatia`. Full protocol in `docs/TESTING.md`.
+Reproduce: `CONCURRENCY=6 scripts/gauntlet.sh 240 ./rogatia`. Full protocol in `docs/TESTING.md`.
 
-Next concrete task: **Phase 4, core pruning** — null move, LMR, RFP, LMP, SEE pruning, continuation history. Every one of them goes through `scripts/sprt.sh` against the `base-phase3` tag. Only your own SPRT numbers mean anything; skipping that is how engine projects die with a stack of patches that each "obviously" helped and collectively lost Elo.
+Next concrete task: **Phase 5, datagen** — an engine subcommand, ~300 lines: 8 random opening plies, 5000-node soft limit per move, quiet-position filter, eval and Syzygy adjudication, viriformat output. It runs on this box 24/7 once written. Baseline for the next SPRT is the `base-phase4` tag (bench 5,356,740 at depth 12).
 
-Known issue, not yet fixed: the engine emits **corrupt PV lines** (repeated moves, moves continuing past checkmate). fastchess warns but plays the `bestmove`, so it does not affect results. Worth a look in Phase 4.
+Fixed in Phase 4: the corrupt PV lines. 720 gauntlet games produced zero `Illegal PV move` warnings from Rogatia.
 
 ### Mental model for what follows
 

@@ -79,19 +79,25 @@ This comes *before* the features it validates. Published Elo figures are order- 
 
 **Measured: ~2197 +/- 29 CCRL Blitz** (Toad 1.0.0 85.8%, Goldfish 2.1.1 44.6%, Blunder 8.5.5 9.8%, 240 games each). The estimate that stood here before was 2000–2400; the measurement lands inside it. Table and caveats in `CLAUDE.md`.
 
-**Deferred to Phase 4:** exposing every search constant as a UCI option so SPSA can drive it later. It is a `src/` change and Phase 3 deliberately added no engine code — do it with the first pruning patch, not after fifty of them.
+**Deferred to Phase 4:** exposing every search constant as a UCI option so SPSA can drive it later. It is a `src/` change and Phase 3 deliberately added no engine code — do it with the first pruning patch, not after fifty of them. **Done** in `src/tunable.h`, 24 parameters.
 
-### Phase 4 — Core pruning (~3–4 weeks) → **~2400–2500**
-The highest-value subset of modern search, and the minimum needed to be a decent teacher for the first network:
+### Phase 4 — Core pruning ✅ → **2799 +/- 42**
+The highest-value subset of modern search, and the minimum needed to be a decent teacher for the first network. All six landed, one commit each, on top of a bench-identical groundwork commit that moved the root to `stack[ROOT_OFFSET]` and threaded `cutNode` through `search()`.
 
-- **Null move pruning** — `R = 3 + depth/3 + min((eval-beta)/margin, cap)`, zugzwang guard, verification search at high depth
-- **Late move reductions** — base table `[isNoisy][depth][moveCount]` ≈ `base + ln(depth)·ln(moveCount)/divisor`, adjusted by non-PV, improving, in-check, **cut node (largest adjustment, ~2×)**, and history. Worth ~100 Elo on its own; budget a week to get right
-- **Reverse futility pruning** — quadratic margin in depth, relaxed when improving
-- **Late move pruning** — `base + depth²/(2 - improving)`
-- **SEE pruning** in the main search
-- **Continuation history** at 1- and 2-ply offsets
+- **Null move pruning** — `R = 3 + depth/3 + min((eval-beta)/200, 3)`, non-pawn-material guard. *No verification search*: the guard alone was enough to leave endgame play sane, and the extra re-search is Phase 7 if a zugzwang loss ever shows up.
+- **Late move reductions** — `base + ln(depth)·ln(moveCount)/divisor`, separate bases for quiet and noisy, adjusted by cut node (2 plies, the largest term), PV, improving, in-check and history. Carried in 1/1024 plies; the `ln` table is **hardcoded integers, not `std::log`**, because bench has to be identical across libm implementations.
+- **Reverse futility pruning** — *linear* margin (75 per ply), not quadratic, relaxed by one ply when improving. Linear is what the literature actually converged on.
+- **Late move pruning** — `3 + depth²/(2 - improving)`
+- **SEE pruning** in the main search — `-80·depth` quiet, `-30·depth` noisy
+- **Continuation history** at 1- and 2-ply offsets, `[prev piece][prev to][piece][to]`
 
-**Gate: ~2400–2500, SPRT-verified against the Phase 3 baseline.**
+**SPRT passed** vs `base-phase3`, 2026-07-27, home box, 8+0.08, `8moves_v3.epd`, concurrency 6: **145-0-7 in 152 games, +651 ± 156 Elo, LLR 2.96, H1 accepted** at bounds [0.00, 10.00]. Fixed-time depth at 5s went from 9–15 plies to 19–34.
+
+Bench depth was raised from 8 to 12 at the same time — the pruned tree made depth 8 a 0.1s fingerprint. Counts before commit `655f93c` are not comparable with counts after it.
+
+**Gate passed: 2799 +/- 42 CCRL Blitz**, 720-game gauntlet, home box, 2026-07-27 — ~300 above the gate. Only Blunder (2664) still yields a usable anchor; Toad and Goldfish are saturated at 99.4% and 96.0%. Treat the number with suspicion until the anchor set is replaced with engines in the 2700–3000 band, which has to happen before Phase 6 or that phase has nothing to measure against. Table and caveats in `CLAUDE.md`.
+
+Also fixed here: the corrupt PV lines carried over from Phase 3. Zero `Illegal PV move` warnings across all 720 games.
 
 ### Phase 5 — Datagen (~1 week to write, then runs forever)
 ~300 lines as an engine subcommand. No generic tool exists; every engine writes its own. 8 random opening plies (no book — deliberate diversity), 5000-node soft limit per move, quiet-position filter (drop in-check, and drop where `|static eval − qsearch eval| > ~60cp`), eval and Syzygy adjudication, viriformat output.
