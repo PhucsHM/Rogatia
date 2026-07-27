@@ -37,6 +37,35 @@ constexpr int MAX_HISTORY = 16384;
 
 constexpr int MAX_QUIETS_TRACKED = 32;
 
+// ------------------------------------------------------------------- LMR ---
+
+// Reductions are carried in 1/1024 of a ply so that the adjustments below can
+// be fractional without floating point anywhere on the search path.
+constexpr int LMR_SCALE = 1024;
+
+// 1024 * ln(i).  Hardcoded rather than computed from std::log at startup: the
+// bench node count has to be identical across machines and libm is not
+// guaranteed to round the same way everywhere.
+constexpr int Ln[64] = {
+       0,    0,  710, 1125, 1420, 1648, 1835, 1993,
+    2129, 2250, 2358, 2455, 2545, 2627, 2702, 2773,
+    2839, 2901, 2960, 3015, 3068, 3118, 3165, 3211,
+    3254, 3296, 3336, 3375, 3412, 3448, 3483, 3516,
+    3549, 3580, 3611, 3641, 3670, 3698, 3725, 3751,
+    3777, 3803, 3827, 3851, 3875, 3898, 3921, 3943,
+    3964, 3985, 4006, 4026, 4046, 4066, 4085, 4104,
+    4122, 4140, 4158, 4175, 4193, 4210, 4226, 4243,
+};
+
+// base + ln(depth)*ln(moveCount)/divisor, indexed [isNoisy][depth][moveCount].
+// A capture or promotion is reduced far less: it changes the material balance,
+// so a wrong guess about it is expensive.
+int lmr_base(bool noisy, int depth, int moveCount) {
+    const int product = Ln[std::min(depth, 63)] * Ln[std::min(moveCount, 63)];
+    return noisy ? 205 + product / 3277    // 0.20 + ln*ln/3.20
+                 : 819 + product / 2304;   // 0.80 + ln*ln/2.25
+}
+
 // ------------------------------------------------------------ search state --
 
 struct Stack {
@@ -409,7 +438,8 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             || (tt.bound == BOUND_UPPER && tt.score <= alpha)))
         return tt.score;
 
-    const bool inCheck = pos.in_check();
+    const bool  inCheck = pos.in_check();
+    const Color us      = pos.side_to_move();
 
     const Score staticEval = inCheck ? VALUE_NONE
                            : (ttHit && tt.eval != VALUE_NONE) ? tt.eval
@@ -502,10 +532,34 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             score = -search<PvNode>(pos, ss + 1, -beta, -alpha, depth - 1,
                                     PvNode ? false : !cutNode);
         } else {
-            // Everything after it only has to be shown to be no better, which
-            // a null window does far more cheaply.  A null-window child is by
-            // construction expected to refute, hence a cut node.
-            score = -search<false>(pos, ss + 1, -alpha - 1, -alpha, depth - 1, !cutNode);
+            // Late move reductions: move ordering is good enough that a move
+            // this far down the list is unlikely to be best, so search it
+            // shallower and only pay full depth if it surprises us.
+            int newDepth = depth - 1;
+
+            if (depth >= 3 && moveCount > 2) {
+                int r = lmr_base(!isQuiet, depth, moveCount);
+
+                r += cutNode * 2 * LMR_SCALE;  // by far the largest term
+                r -= PvNode * LMR_SCALE;
+                r -= improving * LMR_SCALE;
+                r -= inCheck * LMR_SCALE;
+                if (isQuiet)
+                    r -= W.history[us][from_sq(m)][to_sq(m)] * LMR_SCALE / 8192;
+
+                newDepth = std::clamp(depth - (r / LMR_SCALE), 1, depth - 1);
+            }
+
+            // Everything after the first move only has to be shown to be no
+            // better, which a null window does far more cheaply.  A null-window
+            // child is by construction expected to refute, hence a cut node.
+            score = -search<false>(pos, ss + 1, -alpha - 1, -alpha, newDepth, !cutNode);
+
+            // Reduced and still beat alpha: the reduction was wrong, so redo it
+            // at full depth before believing the score.
+            if (score > alpha && newDepth < depth - 1)
+                score = -search<false>(pos, ss + 1, -alpha - 1, -alpha, depth - 1, !cutNode);
+
             if (PvNode && score > alpha && score < beta)
                 score = -search<true>(pos, ss + 1, -beta, -alpha, depth - 1, false);
         }
