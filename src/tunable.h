@@ -18,6 +18,8 @@
 // name, default, min, max
 #define ROGATIA_TUNABLES(X)                     \
     X(AspWindow,        20,     5,     50)      \
+    X(RazorDepth,        4,     1,      8)      \
+    X(RazorMargin,     400,   100,    900)      \
     X(RfpDepth,          8,     4,     12)      \
     X(RfpMargin,        75,    20,    200)      \
     X(NmpDepth,          3,     2,      6)      \

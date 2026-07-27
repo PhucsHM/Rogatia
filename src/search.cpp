@@ -500,6 +500,18 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     const bool improving = !inCheck && (ss - 2)->staticEval != VALUE_NONE
                         && staticEval > (ss - 2)->staticEval;
 
+    // Razoring: the static eval is so far below alpha that only tactics could
+    // rescue this node, so ask quiescence directly instead of guessing.  If
+    // even a full capture sequence cannot reach alpha there is nothing here.
+    // Unlike a bare margin test this one is verified, which is what separates
+    // it from the 2019-era razoring that measured at zero and was removed.
+    if (!PvNode && !inCheck && !is_mate_score(alpha) && depth <= tunable::RazorDepth
+        && staticEval + tunable::RazorMargin * depth < alpha) {
+        const Score score = qsearch<false>(pos, ss, alpha - 1, alpha);
+        if (score < alpha)
+            return score;
+    }
+
     // Reverse futility pruning: we are so far above beta that even giving up
     // the margin -- roughly a piece per ply of depth -- would not bring the
     // score back down.  Fail high on the static eval without searching.
