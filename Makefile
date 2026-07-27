@@ -44,7 +44,9 @@ CXXFLAGS  := -std=c++20 $(WARNINGS) -MMD -MP -I$(SRCDIR)/fathom
 LDFLAGS   :=
 
 ifneq ($(EVALFILE),none)
-	CXXFLAGS += -DEVALFILE=\"$(EVALFILE)\"
+	# Single-quoted so a path containing spaces stays one argument -- this
+	# repo can live under a directory like "Vs Code".
+	CXXFLAGS += -DEVALFILE='"$(EVALFILE)"'
 endif
 
 # -march=native is right for dev and for the 7700; release uses a portable
@@ -100,7 +102,7 @@ nnue-test: $(NNUE_SRC) $(PERFT_OBJ) | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -I$(SRCDIR) -o $(BUILDDIR)/run_nnue $(NNUE_SRC) $(PERFT_OBJ)
 
 run-nnue: nnue-test
-	@$(BUILDDIR)/run_nnue $(EVALFILE)
+	@$(BUILDDIR)/run_nnue "$(EVALFILE)"
 
 # ---- bench: the determinism fingerprint ------------------------------------
 # The node count printed here goes in every commit message.

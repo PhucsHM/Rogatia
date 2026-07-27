@@ -35,10 +35,10 @@ const SCALE: i32 = 400;
 const QA: i16 = 255;
 const QB: i16 = 64;
 
-// One superbatch should be about one pass over the data, so this is set from
-// the dataset size rather than left at bullet's 6104 (which assumes 100M).
+// One superbatch is one pass over the data, so this is set from the dataset
+// size rather than left at bullet's 6104 (which assumes exactly 100M).
 const BATCH_SIZE: usize = 16_384;
-const POSITIONS: usize = 10_225_920;
+const POSITIONS: usize = 112_000_683;
 
 fn main() {
     let mut trainer = ValueTrainerBuilder::default()
@@ -69,12 +69,16 @@ fn main() {
             batch_size: BATCH_SIZE,
             batches_per_superbatch: POSITIONS / BATCH_SIZE,
             start_superbatch: 1,
-            end_superbatch: 20,
+            end_superbatch: 40,
         },
-        // 0.75 leans on the search score over the game result, which is right
-        // when the labels come from our own search rather than strong games.
-        wdl_scheduler: wdl::ConstantWDL { value: 0.75 },
-        lr_scheduler: lr::StepLR { start: 0.001, gamma: 0.3, step: 8 },
+        // 0.3 = 30% game result, 70% search score.  bullet's example uses 0.75,
+        // which fits mostly outcomes and pushes the net toward saturated evals
+        // -- the scaffold net came out roughly twice the scale of the search
+        // scores.  That matters here because Phase 4's pruning margins (RFP
+        // 75/ply, the SEE thresholds) are calibrated to the old eval's scale,
+        // and an inflated eval silently makes all of them more aggressive.
+        wdl_scheduler: wdl::ConstantWDL { value: 0.3 },
+        lr_scheduler: lr::StepLR { start: 0.001, gamma: 0.3, step: 15 },
         save_rate: 10,
     };
 
