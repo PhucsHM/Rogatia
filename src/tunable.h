@@ -36,6 +36,8 @@
     X(IirDepth,          4,     2,      8)      \
     X(FpDepth,           8,     2,     12)      \
     X(FpMargin,        150,    40,    400)      \
+    X(HistPruneDepth,    6,     2,     10)      \
+    X(HistPruneMargin, 2048,   256,   8192)     \
     X(LmpDepth,          8,     4,     12)      \
     X(LmpBase,           3,     1,     10)      \
     X(SeeDepth,          8,     4,     12)      \

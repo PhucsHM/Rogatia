@@ -593,6 +593,16 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             && staticEval + tunable::FpMargin * depth <= alpha)
             continue;
 
+        // History pruning: every time this quiet has been tried it has failed,
+        // and the tables say so.  scores[i] is exactly the summed statistic
+        // score_move already computed for this move -- pick_next keeps moves
+        // and scores in step -- so the test costs a load.  Killers and the TT
+        // move carry large positive scores and can never trip it.
+        if (!PvNode && !inCheck && isQuiet && best > -VALUE_MATE_IN_MAX_PLY
+            && depth <= tunable::HistPruneDepth
+            && scores[i] < -tunable::HistPruneMargin * depth)
+            continue;
+
         // SEE pruning: the move loses material outright by more than the depth
         // left could plausibly win back.  Quiets are given a wider allowance --
         // a quiet move that hangs a piece is usually still a real idea, whereas
