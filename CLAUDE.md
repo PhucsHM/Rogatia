@@ -71,13 +71,15 @@ Build with a net: `make EVALFILE=/abs/path/to/net.nnue`. Nets are gitignored; th
 | Goldfish 2.1.1 | 2252 +/- 16 | 240 | 223-2-15 | 96.0% | saturated |
 | Blunder 8.5.5 | 2664 +/- 11 | 240 | 138-49-53 | 68.5% | 2799 +/- 42 |
 
+The table above is the **Phase 4** measurement and is kept for history. As of Phase 6 every row is saturated — see the note below.
+
 **This number rests on a single anchor and is weaker evidence than the 2197 it replaces.** Toad and Goldfish are now beaten so decisively that the Elo model returns nothing usable from them, so 2799 is Blunder's own rating plus one measured difference — no cross-check, no disagreement to average away. It also overshoots the Phase 4 gate (~2400–2500) by ~300 and lands at the Phase 6 target *before* NNUE, which is a large enough surprise to deserve suspicion rather than celebration. **Before Phase 6, replace the anchor set with three engines in the 2700–3000 band** so the next measurement has cross-checks again.
 
 Reproduce: `CONCURRENCY=6 scripts/gauntlet.sh 240 ./rogatia`. Full protocol in `docs/TESTING.md`.
 
 Next concrete task: **Phase 7, the full search build-out** — extensions, singular search, better time management, SMP. The evaluation is no longer the weak link; the search is.
 
-**Blocking measurement problem: the anchor set is exhausted.** The engine is now ~+360 Elo above the build that measured 2799, which puts it far beyond Blunder (2664), the only anchor that still produced a usable number. All three anchors are now saturated, so `scripts/gauntlet.sh` cannot produce a rating at all. **Before any Phase 7 number is claimed, add three anchors in the 3000–3300 band.** Until then, SPRT against the previous tag is the only meaningful measurement — which is fine for development, but no CCRL figure should be quoted.
+**Blocking measurement problem: the anchor set is exhausted.** Measured 2026-07-28: **219-1-20 (95.4%) against Blunder 8.5.5**, the only anchor that still worked, in 240 games at 8+0.08. That is the same regime where Toad and Goldfish stopped being usable. A naive conversion gives ~3190, but at a 95% score the Elo model is badly compressed and the figure is not credible — the honest statement is "clearly and far above 2664, unquantified". The engine is now ~+360 Elo above the build that measured 2799, which puts it far beyond Blunder (2664), the only anchor that still produced a usable number. All three anchors are now saturated, so `scripts/gauntlet.sh` cannot produce a rating at all. **Before any Phase 7 number is claimed, add three anchors in the 3000–3300 band.** Until then, SPRT against the previous tag is the only meaningful measurement — which is fine for development, but no CCRL figure should be quoted.
 
 **Partly fixed in Phase 4: the corrupt PV lines.** The `Illegal PV move` class is
 genuinely gone — 720 gauntlet games and a 2,308-game SPRT both produced zero.
