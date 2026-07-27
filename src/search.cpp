@@ -235,6 +235,15 @@ Score qsearch(Position& pos, Stack* ss, Score alpha, Score beta) {
 
     W.seldepth = std::max(W.seldepth, ss->ply);
 
+    // search() jumps straight here at depth <= 0, *before* it resets pvLen for
+    // this ply.  Without this reset the slot keeps a stale length from an
+    // earlier, deeper line, and the parent's memcpy copies that many junk moves
+    // into its PV -- which shows up as repeated moves and a PV that runs past
+    // checkmate.  qsearch builds no PV of its own, so zero is the right length:
+    // the reported PV correctly truncates at the qsearch boundary.
+    if (PvNode)
+        W.pvLen[ss->ply] = 0;
+
     if (pos.is_draw_for_search())
         return VALUE_DRAW;
     if (ss->ply >= MAX_PLY - 1)
