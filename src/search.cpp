@@ -582,6 +582,17 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             && moveCount >= tunable::LmpBase + depth * depth / (2 - improving))
             continue;
 
+        // Futility pruning: the static eval sits so far below alpha that a
+        // quiet move -- which by definition wins no material -- cannot lift it
+        // into the window.  Two guards earn their place: in check staticEval is
+        // VALUE_NONE and the comparison is meaningless, and against a mate-score
+        // alpha the test is true for everything, which would prune the mating
+        // move along with the rest.
+        if (!PvNode && !inCheck && isQuiet && best > -VALUE_MATE_IN_MAX_PLY
+            && !is_mate_score(alpha) && depth <= tunable::FpDepth
+            && staticEval + tunable::FpMargin * depth <= alpha)
+            continue;
+
         // SEE pruning: the move loses material outright by more than the depth
         // left could plausibly win back.  Quiets are given a wider allowance --
         // a quiet move that hangs a piece is usually still a real idea, whereas
