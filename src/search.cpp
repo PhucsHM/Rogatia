@@ -81,6 +81,9 @@ struct Stack {
     // below the root, and a null move), which suppresses the lookup.
     Piece  movedPiece = NO_PIECE;
     Square movedTo    = SQ_A1;
+    // This node is on the PV, or the table says it used to be.  Sticky on
+    // purpose: it marks lines that mattered even after they stop being PV.
+    bool   ttPv       = false;
 };
 
 // The root sits at stack[ROOT_OFFSET], not stack[0]: "improving" reads
@@ -486,6 +489,9 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     const Move ttMove = (tt.move != MOVE_NONE && pos.is_pseudo_legal(tt.move)) ? tt.move
                                                                               : MOVE_NONE;
 
+    // TTData carried this flag on every probe and nothing ever read it.
+    ss->ttPv = PvNode || (ttHit && tt.pv);
+
     (ss + 1)->killers[0] = (ss + 1)->killers[1] = MOVE_NONE;
 
     // "Improving": our own static eval is better than it was two plies ago, so
@@ -598,7 +604,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
                 int r = lmr_base(!isQuiet, depth, moveCount);
 
                 r += cutNode * tunable::LmrCutNode;  // by far the largest term
-                r -= PvNode * LMR_SCALE;
+                r -= ss->ttPv * LMR_SCALE;  // true whenever PvNode is
                 r -= improving * LMR_SCALE;
                 r -= inCheck * LMR_SCALE;
                 if (isQuiet) {
@@ -694,7 +700,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     const Bound bound = (best >= beta)      ? BOUND_LOWER
                       : (PvNode && bestMove != MOVE_NONE) ? BOUND_EXACT
                                                           : BOUND_UPPER;
-    TT.store(pos.key(), ss->ply, depth, bound, bestMove, best, staticEval, PvNode);
+    TT.store(pos.key(), ss->ply, depth, bound, bestMove, best, staticEval, ss->ttPv);
 
     return best;
 }
