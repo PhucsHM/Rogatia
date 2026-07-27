@@ -54,10 +54,10 @@ constexpr std::size_t BENCH_HASH_MB = 16;
 
 }  // namespace
 
-// ponytail: depth 8, not the customary 10-12.  With no pruning or reductions
-// yet, depth 9 is 300M nodes and 95 seconds -- too slow to run on every commit.
-// Raise this once Phase 4's LMR and null move land and the tree shrinks.
-int bench_depth_default() { return 8; }
+// Depth 12, the customary range: Phase 4's pruning shrank the tree enough that
+// this is 1.4 seconds.  Depth 8 was left over from the unpruned search and had
+// become too shallow to fingerprint search behaviour usefully.
+int bench_depth_default() { return 12; }
 
 void run_bench(int depth) {
     TT.resize(BENCH_HASH_MB);

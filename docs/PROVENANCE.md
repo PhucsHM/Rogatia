@@ -44,7 +44,13 @@ The line is procedural, not just legal. Read a technique, close the file, implem
 | Butterfly history with gravity | CPW: History Heuristic, Relative History Heuristic | `[stm][from][to]`, gravity update, malus for tried-and-failed quiets |
 | Mate distance pruning | CPW: Mate Distance Pruning | Window clamped to what the remaining distance can deliver |
 | Repetition / 50-move detection | CPW: Repetitions, Fifty-move Rule | Single repetition inside search, three for a game result -- split into two methods |
-| Null move make/unmake | CPW: Null Move Pruning | State plumbing only; the pruning itself is Phase 4 |
+| Null move make/unmake | CPW: Null Move Pruning | State plumbing only |
+| Reverse futility pruning | CPW: Reverse Futility Pruning | Linear margin per ply, one ply of relief when improving; constants picked here |
+| Null move pruning | CPW: Null Move Pruning | `R = 3 + depth/3 + min((eval-beta)/200, 3)`, non-pawn-material guard, no verification search |
+| Late move reductions | CPW: Late Move Reductions | `base + ln(d)*ln(mc)/divisor` in 1/1024 plies from a hardcoded integer ln table (determinism); adjustments for cut node, PV, improving, in check, history |
+| Late move pruning | CPW: Futility Pruning (move count based) | `3 + depth^2/(2 - improving)` |
+| SEE pruning in main search | CPW: Static Exchange Evaluation | Depth-scaled thresholds, separate for quiet and noisy |
+| Continuation history | CPW: History Heuristic (countermove/follow-up variants) | `[prev piece][prev to][piece][to]` at 1- and 2-ply offsets, same bonus/malus as butterfly history |
 | `is_pseudo_legal` validation | CPW: Encoding Moves, Legal Move | Required before a TT move can be trusted; validates a bare 16-bit move from scratch |
 | Time management (soft/hard split) | CPW: Time Management | Flat clock fraction, move overhead, soft checked between iterations and hard every 1024 nodes |
 | UCI protocol | Stefan-Meyer Kahlen, UCI specification (public protocol document) | Protocol text only; no engine's implementation consulted |

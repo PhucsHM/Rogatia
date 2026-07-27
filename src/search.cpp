@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Fail-soft negamax with PVS, iterative deepening, aspiration windows, a
-// quiescence search and a transposition table.  Pruning and reductions (null
-// move, LMR, RFP, futility, extensions) are deliberately absent: they belong
-// to Phase 4, after the SPRT harness exists to measure them.
+// quiescence search and a transposition table, plus the Phase 4 pruning set:
+// reverse futility pruning, null move, late move reductions, late move
+// pruning, SEE pruning and continuation history.  Extensions and singular
+// search are Phase 7.
 #include "search.h"
 
 #include <algorithm>
