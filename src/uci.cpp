@@ -9,6 +9,7 @@
 #include <thread>
 
 #include "bench.h"
+#include "datagen.h"
 #include "movegen.h"
 #include "perft.h"  // move_to_uci
 #include "position.h"
@@ -210,6 +211,22 @@ void uci_loop() {
                 depth = parse_int(token, depth);
             run_bench(depth);
             TT.resize(std::size_t(e.hashMb));  // bench forces its own size back
+        } else if (token == "datagen") {
+            // datagen <output> <positions> [seed] [nodes]
+            e.join();
+            datagen::Config cfg;
+            if (!(is >> cfg.output)) {
+                std::cout << "usage: datagen <output> <positions> [seed] [nodes]\n" << std::flush;
+                continue;
+            }
+            if (is >> token)
+                cfg.positions = std::uint64_t(std::max(parse_int(token, 0), 0));
+            if (is >> token)
+                cfg.seed = std::uint64_t(std::max(parse_int(token, 1), 1));
+            if (is >> token)
+                cfg.nodes = std::uint64_t(std::max(parse_int(token, 5000), 1));
+            datagen::run(cfg);
+            TT.resize(std::size_t(e.hashMb));  // datagen forces its own size back
         } else if (token == "d") {
             std::cout << e.pos.to_string() << std::flush;
         } else if (token == "eval") {

@@ -872,6 +872,48 @@ void go(Position& pos, const Limits& limits) {
     Stopped.store(true, std::memory_order_relaxed);
 }
 
+Result search_fixed_nodes(Position& pos, std::uint64_t nodes) {
+    Stopped.store(false, std::memory_order_relaxed);
+
+    W.nodes     = 0;
+    W.seldepth  = 0;
+    W.quiet     = true;
+    W.useTime   = false;
+    W.nodeLimit = nodes;
+    W.start     = Clock::now();
+
+    W.rootBestMove = first_legal_move(pos);
+    W.pvLen[0]     = 0;
+
+    TT.new_search();
+    if (W.rootBestMove != MOVE_NONE)
+        iterative_deepening(pos, MAX_PLY - 2);
+
+    Result r;
+    r.nodes = W.nodes;
+    r.best  = W.rootBestMove;
+    r.score = W.rootScore;
+    r.pv.assign(W.pv[0], W.pv[0] + W.pvLen[0]);
+    return r;
+}
+
+Score qsearch_eval(Position& pos) {
+    Stopped.store(false, std::memory_order_relaxed);
+
+    W.nodes     = 0;
+    W.quiet     = true;
+    W.useTime   = false;
+    W.nodeLimit = 0;
+    W.start     = Clock::now();
+
+    for (int i = 0; i < MAX_PLY + ROOT_OFFSET + 4; ++i) {
+        W.stack[i]     = Stack{};
+        W.stack[i].ply = i - ROOT_OFFSET;
+    }
+
+    return qsearch<false>(pos, W.stack + ROOT_OFFSET, -VALUE_INFINITE, VALUE_INFINITE);
+}
+
 Result search_fixed_depth(Position& pos, int depth) {
     Stopped.store(false, std::memory_order_relaxed);
 

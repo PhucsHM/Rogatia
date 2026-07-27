@@ -45,6 +45,14 @@ struct Result {
 // Fixed depth, no output, no time checks, exact node count.
 Result search_fixed_depth(Position& pos, int depth);
 
+// Soft node limit, no output, no time checks.  What datagen calls per move:
+// the node budget is the knob that trades label quality against throughput.
+Result search_fixed_nodes(Position& pos, std::uint64_t nodes);
+
+// Quiescence score of `pos` through a full window.  Datagen compares it with
+// the static eval to decide whether a position is quiet enough to label.
+Score qsearch_eval(Position& pos);
+
 // True when the side to move ends up at least `threshold` ahead after the
 // capture sequence on the destination square plays itself out.
 bool see_ge(const Position& pos, Move m, int threshold);
