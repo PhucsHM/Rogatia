@@ -13,6 +13,7 @@
 #include <cassert>
 #include <chrono>
 #include <cstdio>
+#include <cstdint>
 #include <cstring>
 
 #include "movegen.h"
@@ -101,11 +102,11 @@ struct Worker {
     Move  rootBestMove = MOVE_NONE;
     Score rootScore    = VALUE_NONE;
 
-    int history[COLOR_NB][SQUARE_NB][SQUARE_NB] = {};
+    std::int16_t history[COLOR_NB][SQUARE_NB][SQUARE_NB] = {};
 
     // [piece moved N plies ago][where it landed][piece moved now][where it
     // lands].  4 MB, so it lives in the Worker rather than on the stack.
-    int contHist[PIECE_NB][SQUARE_NB][PIECE_NB][SQUARE_NB] = {};
+    std::int16_t contHist[PIECE_NB][SQUARE_NB][PIECE_NB][SQUARE_NB] = {};
 
     Move pv[MAX_PLY][MAX_PLY] = {};
     int  pvLen[MAX_PLY]       = {};
@@ -130,7 +131,8 @@ struct Worker {
 // owns SMP.  Upgrade path is one Worker per thread plus a shared TT.
 Worker W;
 
-void update_history(int& slot, int bonus) {
+template<typename T>
+void update_history(T& slot, int bonus) {
     bonus = std::clamp(bonus, -MAX_HISTORY, MAX_HISTORY);
     // Gravity: the closer a slot is to the cap the less a new bonus moves it,
     // so a move has to keep earning its rank instead of saturating once.
@@ -144,7 +146,7 @@ int history_bonus(int depth) {
 
 // The continuation-history slot for playing `pc` to `to` after the move made
 // at `prev`.  Null when that ply holds no real move.
-int* cont_hist(const Stack* prev, Piece pc, Square to) {
+std::int16_t* cont_hist(const Stack* prev, Piece pc, Square to) {
     if (prev->movedPiece == NO_PIECE)
         return nullptr;
     return &W.contHist[prev->movedPiece][prev->movedTo][pc][to];
@@ -153,7 +155,7 @@ int* cont_hist(const Stack* prev, Piece pc, Square to) {
 // Bonus (or malus) to both offsets at once -- they are always updated together.
 void update_cont_hist(const Stack* ss, Piece pc, Square to, int bonus) {
     for (int off : {1, 2})
-        if (int* slot = cont_hist(ss - off, pc, to))
+        if (std::int16_t* slot = cont_hist(ss - off, pc, to))
             update_history(*slot, bonus);
 }
 
@@ -262,7 +264,7 @@ int score_move(const Position& pos, Move m, Move ttMove, const Stack* ss) {
 
     int score = W.history[pos.side_to_move()][from_sq(m)][to_sq(m)];
     for (int off : {1, 2})
-        if (const int* slot = cont_hist(ss - off, pos.piece_on(from_sq(m)), to_sq(m)))
+        if (const std::int16_t* slot = cont_hist(ss - off, pos.piece_on(from_sq(m)), to_sq(m)))
             score += *slot;
     return score;
 }
@@ -660,7 +662,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
                     // captured before make_move, which has run by now.
                     int hist = W.history[us][from_sq(m)][to_sq(m)];
                     for (int off : {1, 2})
-                        if (const int* slot = cont_hist(ss - off, ss->movedPiece, to_sq(m)))
+                        if (const std::int16_t* slot = cont_hist(ss - off, ss->movedPiece, to_sq(m)))
                             hist += *slot;
                     r -= hist * LMR_SCALE / tunable::LmrHistDiv;
                 }
