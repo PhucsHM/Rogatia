@@ -45,6 +45,12 @@ struct Stack {
     Score staticEval = VALUE_NONE;
 };
 
+// The root sits at stack[ROOT_OFFSET], not stack[0]: "improving" reads
+// (ss-2)->staticEval and continuation history reaches (ss-2) as well, so the
+// plies below the root have to exist as real, zero-initialised entries rather
+// than as whatever precedes the array.
+constexpr int ROOT_OFFSET = 4;
+
 std::atomic<bool> Stopped{false};
 
 struct Worker {
@@ -59,7 +65,7 @@ struct Worker {
     Move pv[MAX_PLY][MAX_PLY] = {};
     int  pvLen[MAX_PLY]       = {};
 
-    Stack stack[MAX_PLY + 4];
+    Stack stack[MAX_PLY + ROOT_OFFSET + 4];
 
     // Time control.  All integer milliseconds; nothing on this path may be
     // floating point or the bench stops being reproducible.
@@ -362,8 +368,11 @@ Score qsearch(Position& pos, Stack* ss, Score alpha, Score beta) {
 
 // ---------------------------------------------------------------- search ---
 
+// `cutNode` is the caller's expectation, not a fact: true means this node was
+// entered on a null window that we expect to fail high.  It carries no meaning
+// on its own -- reductions read it, and it is the single largest LMR input.
 template<bool PvNode>
-Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth) {
+Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool cutNode) {
     if (depth <= 0)
         return qsearch<PvNode>(pos, ss, alpha, beta);
 
@@ -447,13 +456,15 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth) {
         if (moveCount == 1) {
             // The first move gets the full window: it is the PV candidate and
             // there is nothing yet to prove it wrong against.
-            score = -search<PvNode>(pos, ss + 1, -beta, -alpha, depth - 1);
+            score = -search<PvNode>(pos, ss + 1, -beta, -alpha, depth - 1,
+                                    PvNode ? false : !cutNode);
         } else {
             // Everything after it only has to be shown to be no better, which
-            // a null window does far more cheaply.
-            score = -search<false>(pos, ss + 1, -alpha - 1, -alpha, depth - 1);
+            // a null window does far more cheaply.  A null-window child is by
+            // construction expected to refute, hence a cut node.
+            score = -search<false>(pos, ss + 1, -alpha - 1, -alpha, depth - 1, !cutNode);
             if (PvNode && score > alpha && score < beta)
-                score = -search<true>(pos, ss + 1, -beta, -alpha, depth - 1);
+                score = -search<true>(pos, ss + 1, -beta, -alpha, depth - 1, false);
         }
 
         pos.unmake_move(m);
@@ -596,10 +607,11 @@ Move first_legal_move(const Position& pos) {
 }
 
 void iterative_deepening(Position& pos, int maxDepth) {
-    for (int i = 0; i < MAX_PLY + 4; ++i)
-        W.stack[i] = Stack{};
-    for (int i = 0; i < MAX_PLY + 4; ++i)
-        W.stack[i].ply = i;
+    for (int i = 0; i < MAX_PLY + ROOT_OFFSET + 4; ++i) {
+        W.stack[i]     = Stack{};
+        W.stack[i].ply = i - ROOT_OFFSET;
+    }
+    Stack* const root = W.stack + ROOT_OFFSET;
 
     Score previous = VALUE_NONE;
 
@@ -620,7 +632,7 @@ void iterative_deepening(Position& pos, int maxDepth) {
 
         Score score;
         while (true) {
-            score = search<true>(pos, W.stack, alpha, beta, depth);
+            score = search<true>(pos, root, alpha, beta, depth, false);
 
             if (aborted())
                 break;
