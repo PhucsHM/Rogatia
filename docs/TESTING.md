@@ -31,6 +31,11 @@ move the tag forward, rebuild `rogatia-base`, and note the new bench count.
 Always verify the baseline's bench before trusting a result. Two binaries with
 different bench counts than you expect means you tested the wrong thing.
 
+**The bench depth changed at commit `655f93c`** (Phase 4), from 8 to 12. Bench
+counts in commit messages before that commit are depth-8 numbers and are not
+comparable with anything after it — including `base-phase3`'s 54095910, which
+only reproduces by checking the tag out and running `./rogatia-base bench 8`.
+
 ---
 
 ## Running an SPRT

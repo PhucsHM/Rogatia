@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -662,6 +663,13 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
 
     if (moveCount == 0)
         return inCheck ? mated_in(ss->ply) : VALUE_DRAW;
+
+    // LMP and SEE pruning skip moves after moveCount has already counted them,
+    // so "moveCount > 0" no longer implies "something was searched".  What
+    // guarantees a real score here is that both guards require best to be above
+    // the mate range, which -VALUE_INFINITE is not: the first legal move can
+    // never be pruned.  Assert it rather than trust the reading.
+    assert(best > -VALUE_INFINITE);
 
     if (aborted())
         return VALUE_DRAW;
