@@ -77,6 +77,29 @@ Next concrete task: **Phase 6, the first NNUE** — `(768 → 256)x2 → 1` on ~
 
 Fixed in Phase 4: the corrupt PV lines. 720 gauntlet games produced zero `Illegal PV move` warnings from Rogatia.
 
+### In flight — branch `phase4-fixes`, nothing merged
+
+Ten commits sitting on a branch, **none SPRT'd**. Perft is bit-exact on every
+one and each commit message carries its own bench, but bench is a fingerprint,
+not a strength measurement — do not merge any of these on the node count alone.
+The queue and the per-patch reasoning are in the branch's commit messages.
+
+Four are bench-neutral (bench identical to the commit before, so they need no
+SPRT — only a non-regression sanity check if you want one): slider blockers for
+the side to move only, history tables narrowed to `int16`, and the two datagen
+label fixes. The rest change search and each needs its own test.
+
+Two datagen bugs are fixed there and **both matter for the next dataset, not the
+one currently generating**: the "abandon the game" path was emitting a
+fabricated draw result, and adjudication counted `|score|` without regard to
+sign so an oscillating position was labelled by a coin flip.
+
+Also worth knowing before the next run: the node budget has a **granularity and
+floor of 1024** (`check_stop` only tests the limit when `(nodes & 1023) == 0`).
+`5000` really searches `5120`, and anything below 1024 is identical to 1024 —
+verified by three budgets producing byte-identical output. Pick budgets on 1024
+boundaries so the script says what it does.
+
 **Datagen (Phase 5):** `scripts/datagen.sh [positions-per-worker] [workers] [nodes]`, one process per thread, output in **bulletformat** (32 B/position) under `data/`, which is gitignored. Syzygy 3-4-5 lives at `~/syzygy/3-4-5` (290 files, 939 MB) and is picked up via `$SYZYGY_PATH`. **An incomplete tablebase set is worse than none** — the engine builds `-DNDEBUG`, so Fathom's own asserts are gone and a truncated file reads as garbage; `datagen.sh` checks the file count for exactly this reason.
 
 ### Mental model for what follows
