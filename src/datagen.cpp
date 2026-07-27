@@ -257,8 +257,9 @@ void run(const Config& cfg) {
             continue;
 
         // ------------------------------------------------------- play --
-        int whiteResult = 1;  // draw unless something below says otherwise
-        int decisive    = 0;  // plies in a row above the adjudication score
+        int whiteResult  = 1;  // draw unless something below says otherwise
+        int decisive     = 0;  // plies in a row above the adjudication score
+        int decisiveSide = 0;  // which side those plies favoured: +1 white, -1 black
 
         for (int ply = 0; ply < MAX_GAME_PLIES; ++ply) {
             if (pos.is_game_draw())
@@ -284,8 +285,14 @@ void run(const Config& cfg) {
             // No completed iteration means no score to label with -- the node
             // budget is too small for this position.  Abandon the game rather
             // than write a position labelled with a stale score.
-            if (r.best == MOVE_NONE || r.score == VALUE_NONE)
+            if (r.best == MOVE_NONE || r.score == VALUE_NONE) {
+                // Abandon means abandon: the samples already collected have no
+                // result to carry, and emitting them would label the whole game
+                // with the default draw -- a fabricated result, which is worse
+                // than the stale score this check exists to prevent.
+                samples.clear();
                 break;
+            }
 
             const Color us         = pos.side_to_move();
             const int   whiteScore = (us == WHITE) ? r.score : -r.score;
@@ -306,9 +313,20 @@ void run(const Config& cfg) {
                 samples.push_back(snapshot(pos, whiteScore));
 
             // ------------------------------------------ adjudication --
-            decisive = (std::abs(whiteScore) >= ADJUDICATE_SCORE) ? decisive + 1 : 0;
+            // The same side has to hold the advantage throughout.  A score that
+            // swings between +2000 and -2000 is a position the search cannot
+            // resolve, not a won game -- adjudicating it on the last ply's sign
+            // labels every sample in that game with a coin flip.
+            if (std::abs(whiteScore) >= ADJUDICATE_SCORE) {
+                const int side = (whiteScore > 0) ? 1 : -1;
+                decisive       = (side == decisiveSide) ? decisive + 1 : 1;
+                decisiveSide   = side;
+            } else {
+                decisive     = 0;
+                decisiveSide = 0;
+            }
             if (decisive >= ADJUDICATE_PLIES) {
-                whiteResult = (whiteScore > 0) ? 2 : 0;
+                whiteResult = (decisiveSide > 0) ? 2 : 0;
                 break;
             }
 
