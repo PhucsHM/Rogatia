@@ -527,6 +527,14 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             && depth <= 8 && moveCount >= 3 + depth * depth / (2 - improving))
             continue;
 
+        // SEE pruning: the move loses material outright by more than the depth
+        // left could plausibly win back.  Quiets are given a wider allowance --
+        // a quiet move that hangs a piece is usually still a real idea, whereas
+        // a capture that loses material rarely is.
+        if (!rootNode && best > -VALUE_MATE_IN_MAX_PLY && depth <= 8
+            && !see_ge(pos, m, -(isQuiet ? 80 : 30) * depth))
+            continue;
+
         if (isQuiet && quietCount < MAX_QUIETS_TRACKED)
             quietsTried[quietCount++] = m;
 
