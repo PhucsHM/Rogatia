@@ -16,6 +16,7 @@
 #include <cstring>
 
 #include "movegen.h"
+#include "nnue.h"
 #include "perft.h"  // move_to_uci
 #include "tt.h"
 #include "tunable.h"
@@ -81,6 +82,10 @@ struct Stack {
     // below the root, and a null move), which suppresses the lookup.
     Piece  movedPiece = NO_PIECE;
     Square movedTo    = SQ_A1;
+
+    // The NNUE accumulator for the position at this ply, carried down the tree
+    // incrementally rather than rebuilt.  Unused when no network is loaded.
+    nnue::Accumulator acc{};
 };
 
 // The root sits at stack[ROOT_OFFSET], not stack[0]: "improving" reads
@@ -126,6 +131,12 @@ struct Worker {
 // ponytail: one global worker -- the engine is single-threaded and Phase 7
 // owns SMP.  Upgrade path is one Worker per thread plus a shared TT.
 Worker W;
+
+// Evaluation goes through the accumulator this ply already carries; without a
+// network it falls back to the piece-square tables.
+Score eval_at(const Position& pos, const Stack* ss) {
+    return nnue::loaded() ? nnue::evaluate(pos, ss->acc) : evaluate(pos);
+}
 
 void update_history(int& slot, int bonus) {
     bonus = std::clamp(bonus, -MAX_HISTORY, MAX_HISTORY);
@@ -317,7 +328,7 @@ Score qsearch(Position& pos, Stack* ss, Score alpha, Score beta) {
     if (pos.is_draw_for_search())
         return VALUE_DRAW;
     if (ss->ply >= MAX_PLY - 1)
-        return pos.in_check() ? VALUE_DRAW : evaluate(pos);
+        return pos.in_check() ? VALUE_DRAW : eval_at(pos, ss);
 
     TTData tt;
     const bool ttHit = TT.probe(pos.key(), ss->ply, tt);
@@ -332,7 +343,7 @@ Score qsearch(Position& pos, Stack* ss, Score alpha, Score beta) {
     Score      staticEval = VALUE_NONE;
 
     if (!inCheck) {
-        staticEval = (ttHit && tt.eval != VALUE_NONE) ? tt.eval : evaluate(pos);
+        staticEval = (ttHit && tt.eval != VALUE_NONE) ? tt.eval : eval_at(pos, ss);
         ss->staticEval = staticEval;
 
         // Stand pat: nobody is forced to capture, so the quiet score is a
@@ -402,6 +413,8 @@ Score qsearch(Position& pos, Stack* ss, Score alpha, Score beta) {
                 continue;
         }
 
+        if (nnue::loaded())
+            nnue::apply_move(pos, m, ss->acc, (ss + 1)->acc);
         pos.make_move(m);
         TT.prefetch(pos.key());
         const Score score = -qsearch<PvNode>(pos, ss + 1, -beta, -alpha);
@@ -454,7 +467,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         if (pos.is_draw_for_search())
             return VALUE_DRAW;
         if (ss->ply >= MAX_PLY - 1)
-            return pos.in_check() ? VALUE_DRAW : evaluate(pos);
+            return pos.in_check() ? VALUE_DRAW : eval_at(pos, ss);
 
         // Mate distance pruning: a mate found closer to the root than anything
         // this subtree could deliver makes the whole window unreachable.
@@ -477,7 +490,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
 
     const Score staticEval = inCheck ? VALUE_NONE
                            : (ttHit && tt.eval != VALUE_NONE) ? tt.eval
-                                                              : evaluate(pos);
+                                                              : eval_at(pos, ss);
     ss->staticEval = staticEval;
 
     // A TT move from a different position must be re-validated from scratch --
@@ -517,6 +530,8 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
 
         ss->currentMove = MOVE_NULL;
         ss->movedPiece  = NO_PIECE;
+        if (nnue::loaded())
+            (ss + 1)->acc = ss->acc;
         pos.make_null_move();
         const Score score =
             -search<false>(pos, ss + 1, -beta, -beta + 1, depth - R, !cutNode);
@@ -579,6 +594,8 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         ss->currentMove = m;
         ss->movedPiece  = pos.piece_on(from_sq(m));
         ss->movedTo     = to_sq(m);
+        if (nnue::loaded())
+            nnue::apply_move(pos, m, ss->acc, (ss + 1)->acc);
         pos.make_move(m);
         TT.prefetch(pos.key());
 
@@ -777,6 +794,11 @@ void iterative_deepening(Position& pos, int maxDepth) {
     }
     Stack* const root = W.stack + ROOT_OFFSET;
 
+    // The only full refresh in a normal search: every other accumulator in the
+    // tree is derived from this one.
+    if (nnue::loaded())
+        nnue::refresh(pos, root->acc);
+
     Score previous = VALUE_NONE;
 
     for (int depth = 1; depth <= maxDepth; ++depth) {
@@ -916,6 +938,9 @@ Score qsearch_eval(Position& pos) {
         W.stack[i]     = Stack{};
         W.stack[i].ply = i - ROOT_OFFSET;
     }
+
+    if (nnue::loaded())
+        nnue::refresh(pos, W.stack[ROOT_OFFSET].acc);
 
     return qsearch<false>(pos, W.stack + ROOT_OFFSET, -VALUE_INFINITE, VALUE_INFINITE);
 }

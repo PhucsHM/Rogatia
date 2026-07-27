@@ -5,12 +5,20 @@
 
 #include "bench.h"
 #include "datagen.h"
+#include "nnue.h"
 #include "position.h"
 #include "tt.h"
 #include "uci.h"
 
 int main(int argc, char** argv) {
     rogatia::init();
+
+    // EVALFILE is baked in at build time and may be overridden at runtime, so a
+    // net can be swapped without a rebuild while it is still being iterated on.
+#ifdef EVALFILE
+    const char* netPath = std::getenv("EVALFILE");
+    rogatia::nnue::load(netPath && *netPath ? netPath : EVALFILE);
+#endif
 
     // `rogatia bench [depth]` is how OpenBench measures the fingerprint: run
     // it and exit, never touching stdin.

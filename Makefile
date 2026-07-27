@@ -64,7 +64,7 @@ else ifeq ($(build),debug)
 	LDFLAGS  += -fsanitize=address,undefined
 endif
 
-.PHONY: all debug release perft bench run-perft clean format
+.PHONY: all debug release perft bench run-perft nnue-test run-nnue clean format
 
 all: $(EXE)
 
@@ -90,6 +90,17 @@ perft: $(PERFT_SRC) $(PERFT_OBJ) | $(BUILDDIR)
 
 run-perft: perft
 	@$(BUILDDIR)/run_perft $(TESTDIR)/perft_suite.txt
+
+# ---- nnue: the accumulator's equivalent of the perft gate ------------------
+# Incremental updates duplicate make_move's logic and fail silently, so this
+# asserts they match a from-scratch refresh at every node of a small tree.
+NNUE_SRC := $(TESTDIR)/run_nnue.cpp
+
+nnue-test: $(NNUE_SRC) $(PERFT_OBJ) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -I$(SRCDIR) -o $(BUILDDIR)/run_nnue $(NNUE_SRC) $(PERFT_OBJ)
+
+run-nnue: nnue-test
+	@$(BUILDDIR)/run_nnue $(EVALFILE)
 
 # ---- bench: the determinism fingerprint ------------------------------------
 # The node count printed here goes in every commit message.
