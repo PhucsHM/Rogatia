@@ -108,12 +108,29 @@ Also fixed here: the corrupt PV lines carried over from Phase 3. Zero `Illegal P
 
 **Syzygy via Fathom** (MIT), vendored verbatim in `src/fathom/`. 3-4-5 set, 290 files / 939 MB, at `$SYZYGY_PATH` (default `~/syzygy/3-4-5`). Hard adjudication cut the draw share from 33.7% to 27.3% and ended games sooner — 279 games per 20k positions against 241 without it — because dead endings stop being ground out to a 50-move draw.
 
-**Validation:** every record decodes back to a legal position (two kings, king squares consistent, no pawns on rank 1/8), and score correlates with result as a clean sigmoid (−800cp → 2% score, +800cp → 97%), which is what catches a perspective-flip bug.
+**Validation**, four checks, because bad data fails silently and expensively:
+1. Every record decodes back to a legal position (two kings, king squares consistent, no pawns on rank 1/8).
+2. Score correlates with result as a clean sigmoid (−800cp → 2%, +800cp → 97%).
+3. Material balance **in the stored frame** tracks the stored score (−3 → −680cp, +3 → +623cp, 96.7% sign agreement). Checks 1 and 2 both pass even if the board and the labels ended up in different frames; this is the one that does not.
+4. `bullet-utils validate` — the real consumer — reports *"No invalid positions!"* with a WDL split matching our own decoder.
 
 From here the CPU generates data 24/7 in the background while search development continues. These are not sequential.
 
 ### Phase 6 — First NNUE (~1 week) → **~2800**
-`(768 → 256)x2 → 1` on ~100M positions (~1 day of datagen, hours of training on the 3090). AVX2 inference with incremental accumulator updates. SCReLU, QA=255, QB=64, eval scale ~400.
+`(768 → 256)x2 → 1` on ~100M positions. AVX2 inference with incremental accumulator updates. SCReLU, QA=255, QB=64, eval scale ~400.
+
+**Toolchain is already installed and proven end-to-end** (2026-07-27, home box):
+
+| Piece | Where | Note |
+|---|---|---|
+| Rust | `~/.cargo`, 1.97.1 | rustup, no root |
+| bullet | `~/bullet` | build with `CUDA_PATH=/opt/cuda cargo b -r --package bullet_lib --features cuda --example simple` |
+| CUDA | `/opt/cuda`, 13.3.73 | `LD_LIBRARY_PATH=/opt/cuda/lib64` to run |
+| `bullet-utils` | `~/bullet/target/release/` | needs no CUDA; `validate` is the data gate |
+
+A smoke test on real datagen output reported **`Training on NVIDIA GeForce RTX 3090 (sm_86)`** at **~9.1M positions/sec**, so a 100M-position superbatch is ~11 seconds and the whole 40-superbatch schedule is under ten minutes. **Training is not the bottleneck; datagen is** — which is why datagen runs 24/7 and this phase is cheap to repeat.
+
+`examples/simple.rs` is already this exact architecture (`Chess768` inputs, `(768 → HIDDEN)x2 → 1`, `DirectSequentialDataLoader`), so Phase 6 starts by editing it rather than writing a trainer.
 
 Build the **`-march` bench-determinism check here**, the moment inference first exists. NNUE accumulation order can differ between SIMD widths and silently break OpenBench eligibility. Trivial to catch with one code path; painful with three.
 
