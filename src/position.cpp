@@ -141,9 +141,14 @@ bool Position::parse_fen(const std::string& fen) {
         // just double-pushed to -- otherwise movegen emits an en-passant
         // capture and make_move removes a piece that is not there.
         const Square victim = ep - pawn_push(sideToMove_);
+        // The last clause is the same rule make_move applies: an ep square no
+        // pawn can use is not part of the position, and the two paths have to
+        // agree or the identical position hashes differently depending on
+        // whether it arrived by FEN or by moves.
         if (relative_rank(sideToMove_, ep) == RANK_6 && board_[ep] == NO_PIECE
             && board_[ep + pawn_push(sideToMove_)] == NO_PIECE
-            && board_[victim] == make_piece(~sideToMove_, PAWN))
+            && board_[victim] == make_piece(~sideToMove_, PAWN)
+            && (pawn_attacks_bb(~sideToMove_, ep) & pieces(sideToMove_, PAWN)))
             st_.epSquare = ep;
     }
 
@@ -300,9 +305,20 @@ Bitboard Position::slider_blockers(Bitboard sliders, Square s, Bitboard& pinners
 }
 
 void Position::compute_checkers_and_blockers() {
-    st_.checkers = attackers_to(king_square(sideToMove_), pieces()) & pieces(~sideToMove_);
-    st_.blockers[WHITE] = slider_blockers(pieces(BLACK), king_square(WHITE), st_.pinners[WHITE]);
-    st_.blockers[BLACK] = slider_blockers(pieces(WHITE), king_square(BLACK), st_.pinners[BLACK]);
+    const Color us = sideToMove_;
+    st_.checkers   = attackers_to(king_square(us), pieces()) & pieces(~us);
+
+    // Side to move only.  is_legal() is the single consumer of blockers_ and it
+    // never asks for the other colour; pinned() and gives_check() have no
+    // callers anywhere.  This runs on every make_move, so the second pass was a
+    // full slider_blockers -- two pseudo-attack lookups and a sniper loop --
+    // computed, copied into BoardState and popped again without ever being read.
+    //
+    // The consequence is that blockers_[~us] and pinners_[~us] hold the values
+    // from the previous ply and are NOT valid for this position.  Anything that
+    // wants them back -- a gives_check() fast path for check extensions, say --
+    // has to restore the second pass with it.
+    st_.blockers[us] = slider_blockers(pieces(~us), king_square(us), st_.pinners[us]);
 }
 
 Bitboard Position::attackers_to(Square s, Bitboard occ) const {
@@ -486,7 +502,7 @@ int Position::repetitions(int stopAt) const {
     // Same side to move means an even number of plies back, and no repetition
     // can cross an irreversible move, so rule50 bounds the search.
     const int base  = int(history_.size());
-    const int end   = std::min(st_.rule50, base);
+    const int end   = std::min(std::min(st_.rule50, st_.pliesFromNull), base);
     int       found = 0;
 
     for (int i = 4; i <= end; i += 2)
@@ -531,6 +547,7 @@ void Position::make_move(Move m) {
                  : (mt == CASTLING)   ? NO_PIECE
                                       : board_[to];
     ++st_.rule50;
+    ++st_.pliesFromNull;
 
     if (st_.epSquare != SQ_NONE) {
         st_.key ^= zobrist::EnPassant[file_of(st_.epSquare)];
@@ -569,9 +586,16 @@ void Position::make_move(Move m) {
 
     if (type_of(pc) == PAWN) {
         st_.rule50 = 0;
+        // Only record the square when a pawn can actually take there.  An
+        // unusable ep right is not part of the position, and hashing it splits
+        // one position into two keys: the table stops matching them, and
+        // repetitions()  -- which compares keys -- stops seeing them as equal.
         if ((int(to) ^ int(from)) == 16) {
-            st_.epSquare = Square((int(from) + int(to)) / 2);
-            st_.key ^= zobrist::EnPassant[file_of(st_.epSquare)];
+            const Square ep = Square((int(from) + int(to)) / 2);
+            if (pawn_attacks_bb(us, ep) & pieces(them, PAWN)) {
+                st_.epSquare = ep;
+                st_.key ^= zobrist::EnPassant[file_of(ep)];
+            }
         }
     }
 
@@ -632,7 +656,8 @@ void Position::make_null_move() {
         st_.epSquare = SQ_NONE;
     }
 
-    st_.captured = NO_PIECE;
+    st_.captured      = NO_PIECE;
+    st_.pliesFromNull = 0;
     ++st_.rule50;
 
     sideToMove_ = ~sideToMove_;

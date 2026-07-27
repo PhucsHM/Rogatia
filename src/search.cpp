@@ -13,6 +13,7 @@
 #include <cassert>
 #include <chrono>
 #include <cstdio>
+#include <cstdint>
 #include <cstring>
 
 #include "movegen.h"
@@ -98,11 +99,11 @@ struct Worker {
     Move  rootBestMove = MOVE_NONE;
     Score rootScore    = VALUE_NONE;
 
-    int history[COLOR_NB][SQUARE_NB][SQUARE_NB] = {};
+    std::int16_t history[COLOR_NB][SQUARE_NB][SQUARE_NB] = {};
 
     // [piece moved N plies ago][where it landed][piece moved now][where it
     // lands].  4 MB, so it lives in the Worker rather than on the stack.
-    int contHist[PIECE_NB][SQUARE_NB][PIECE_NB][SQUARE_NB] = {};
+    std::int16_t contHist[PIECE_NB][SQUARE_NB][PIECE_NB][SQUARE_NB] = {};
 
     Move pv[MAX_PLY][MAX_PLY] = {};
     int  pvLen[MAX_PLY]       = {};
@@ -127,7 +128,8 @@ struct Worker {
 // owns SMP.  Upgrade path is one Worker per thread plus a shared TT.
 Worker W;
 
-void update_history(int& slot, int bonus) {
+template<typename T>
+void update_history(T& slot, int bonus) {
     bonus = std::clamp(bonus, -MAX_HISTORY, MAX_HISTORY);
     // Gravity: the closer a slot is to the cap the less a new bonus moves it,
     // so a move has to keep earning its rank instead of saturating once.
@@ -141,7 +143,7 @@ int history_bonus(int depth) {
 
 // The continuation-history slot for playing `pc` to `to` after the move made
 // at `prev`.  Null when that ply holds no real move.
-int* cont_hist(const Stack* prev, Piece pc, Square to) {
+std::int16_t* cont_hist(const Stack* prev, Piece pc, Square to) {
     if (prev->movedPiece == NO_PIECE)
         return nullptr;
     return &W.contHist[prev->movedPiece][prev->movedTo][pc][to];
@@ -150,7 +152,7 @@ int* cont_hist(const Stack* prev, Piece pc, Square to) {
 // Bonus (or malus) to both offsets at once -- they are always updated together.
 void update_cont_hist(const Stack* ss, Piece pc, Square to, int bonus) {
     for (int off : {1, 2})
-        if (int* slot = cont_hist(ss - off, pc, to))
+        if (std::int16_t* slot = cont_hist(ss - off, pc, to))
             update_history(*slot, bonus);
 }
 
@@ -259,7 +261,7 @@ int score_move(const Position& pos, Move m, Move ttMove, const Stack* ss) {
 
     int score = W.history[pos.side_to_move()][from_sq(m)][to_sq(m)];
     for (int off : {1, 2})
-        if (const int* slot = cont_hist(ss - off, pos.piece_on(from_sq(m)), to_sq(m)))
+        if (const std::int16_t* slot = cont_hist(ss - off, pos.piece_on(from_sq(m)), to_sq(m)))
             score += *slot;
     return score;
 }
@@ -494,6 +496,18 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     const bool improving = !inCheck && (ss - 2)->staticEval != VALUE_NONE
                         && staticEval > (ss - 2)->staticEval;
 
+    // Razoring: the static eval is so far below alpha that only tactics could
+    // rescue this node, so ask quiescence directly instead of guessing.  If
+    // even a full capture sequence cannot reach alpha there is nothing here.
+    // Unlike a bare margin test this one is verified, which is what separates
+    // it from the 2019-era razoring that measured at zero and was removed.
+    if (!PvNode && !inCheck && !is_mate_score(alpha) && depth <= tunable::RazorDepth
+        && staticEval + tunable::RazorMargin * depth < alpha) {
+        const Score score = qsearch<false>(pos, ss, alpha - 1, alpha);
+        if (score < alpha)
+            return score;
+    }
+
     // Reverse futility pruning: we are so far above beta that even giving up
     // the margin -- roughly a piece per ply of depth -- would not bring the
     // score back down.  Fail high on the static eval without searching.
@@ -531,6 +545,18 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             return is_mate_score(score) ? beta : score;
     }
 
+    // Internal iterative reduction: no table move at this depth means no
+    // ordering information, and searching blind at full depth is the most
+    // expensive way to find one.  Search shallower, and let the entry this
+    // leaves behind order the re-visit properly.
+    // Only where the node is expected to matter: a PV node, or one we expect
+    // to fail high and therefore want a good first move for.  Applying it at
+    // all-nodes as well fires almost everywhere against a cold table and
+    // compounds down the tree -- measured at -59% nodes, which is not a
+    // reduction, it is searching a different and much shallower tree.
+    if ((PvNode || cutNode) && depth >= tunable::IirDepth && ttMove == MOVE_NONE)
+        --depth;
+
     Move moves[MAX_MOVES];
     int  scores[MAX_MOVES];
     const int count = int(generate<ALL>(pos, moves) - moves);
@@ -562,6 +588,27 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         if (!PvNode && !inCheck && isQuiet && best > -VALUE_MATE_IN_MAX_PLY
             && depth <= tunable::LmpDepth
             && moveCount >= tunable::LmpBase + depth * depth / (2 - improving))
+            continue;
+
+        // Futility pruning: the static eval sits so far below alpha that a
+        // quiet move -- which by definition wins no material -- cannot lift it
+        // into the window.  Two guards earn their place: in check staticEval is
+        // VALUE_NONE and the comparison is meaningless, and against a mate-score
+        // alpha the test is true for everything, which would prune the mating
+        // move along with the rest.
+        if (!PvNode && !inCheck && isQuiet && best > -VALUE_MATE_IN_MAX_PLY
+            && !is_mate_score(alpha) && depth <= tunable::FpDepth
+            && staticEval + tunable::FpMargin * depth <= alpha)
+            continue;
+
+        // History pruning: every time this quiet has been tried it has failed,
+        // and the tables say so.  scores[i] is exactly the summed statistic
+        // score_move already computed for this move -- pick_next keeps moves
+        // and scores in step -- so the test costs a load.  Killers and the TT
+        // move carry large positive scores and can never trip it.
+        if (!PvNode && !inCheck && isQuiet && best > -VALUE_MATE_IN_MAX_PLY
+            && depth <= tunable::HistPruneDepth
+            && scores[i] < -tunable::HistPruneMargin * depth)
             continue;
 
         // SEE pruning: the move loses material outright by more than the depth
@@ -601,8 +648,18 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
                 r -= PvNode * LMR_SCALE;
                 r -= improving * LMR_SCALE;
                 r -= inCheck * LMR_SCALE;
-                if (isQuiet)
-                    r -= W.history[us][from_sq(m)][to_sq(m)] * LMR_SCALE / tunable::LmrHistDiv;
+                if (isQuiet) {
+                    // The same statistic move ordering already scores with:
+                    // butterfly history plus both continuation offsets.  Reading
+                    // only the butterfly half threw away two thirds of what the
+                    // node already knows about this move.  ss->movedPiece was
+                    // captured before make_move, which has run by now.
+                    int hist = W.history[us][from_sq(m)][to_sq(m)];
+                    for (int off : {1, 2})
+                        if (const std::int16_t* slot = cont_hist(ss - off, ss->movedPiece, to_sq(m)))
+                            hist += *slot;
+                    r -= hist * LMR_SCALE / tunable::LmrHistDiv;
+                }
 
                 newDepth = std::clamp(depth - (r / LMR_SCALE), 1, depth - 1);
             }

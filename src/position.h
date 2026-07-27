@@ -21,6 +21,10 @@ struct BoardState {
     Square   epSquare       = SQ_NONE;
     int      rule50         = 0;
     Piece    captured       = NO_PIECE;
+    // Plies since the last null move.  A null move is not a legal continuation,
+    // so nothing before one can be repeated by any sequence of real moves --
+    // repetitions() must not look past it.
+    int      pliesFromNull  = 0;
 
     Key key       = 0;
     Key pawnKey   = 0;

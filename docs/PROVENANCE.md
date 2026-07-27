@@ -51,6 +51,13 @@ The line is procedural, not just legal. Read a technique, close the file, implem
 | Late move pruning | CPW: Futility Pruning (move count based) | `3 + depth^2/(2 - improving)` |
 | SEE pruning in main search | CPW: Static Exchange Evaluation | Depth-scaled thresholds, separate for quiet and noisy |
 | Continuation history | CPW: History Heuristic (countermove/follow-up variants) | `[prev piece][prev to][piece][to]` at 1- and 2-ply offsets, same bonus/malus as butterfly history |
+| Internal iterative reduction | CPW: Internal Iterative Deepening (IIR section) | Reduce a ply when the node has no TT move, at PV and cut nodes only; the modern replacement for IID, which measures at roughly zero |
+| Futility pruning (child node) | CPW: Futility Pruning | Linear depth margin against alpha, quiets only; guards for in-check (`staticEval` is `VALUE_NONE`) and mate-score alpha are ours |
+| Razoring (quiescence-verified) | CPW: Razoring | Deliberately the verified form -- drop to qsearch and fail low only if it agrees -- not the bare-margin form that measured at zero and was removed from Stockfish in 2020 |
+| History pruning of quiets | CPW: History Leaf Pruning | Depth-scaled negative threshold; reuses the summed score `score_move` already wrote into `scores[]`, so it costs one load |
+| ttPv reduction exemption | CPW: Transposition Table (PV flag) | The was-a-PV flag was already stored and discarded; made sticky and fed to LMR |
+| En passant hashed only when capturable | CPW: Zobrist Hashing, En passant | Standard condition. Without it one position takes two keys, which costs TT hits and silently breaks repetition matching |
+| Repetition bounded by plies-from-null | CPW: Null Move Pruning, Repetitions | A null move is not a legal continuation, so nothing before one can be repeated by real moves |
 | `is_pseudo_legal` validation | CPW: Encoding Moves, Legal Move | Required before a TT move can be trusted; validates a bare 16-bit move from scratch |
 | Time management (soft/hard split) | CPW: Time Management | Flat clock fraction, move overhead, soft checked between iterations and hard every 1024 nodes |
 | UCI protocol | Stefan-Meyer Kahlen, UCI specification (public protocol document) | Protocol text only; no engine's implementation consulted |
