@@ -537,6 +537,18 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             return is_mate_score(score) ? beta : score;
     }
 
+    // Internal iterative reduction: no table move at this depth means no
+    // ordering information, and searching blind at full depth is the most
+    // expensive way to find one.  Search shallower, and let the entry this
+    // leaves behind order the re-visit properly.
+    // Only where the node is expected to matter: a PV node, or one we expect
+    // to fail high and therefore want a good first move for.  Applying it at
+    // all-nodes as well fires almost everywhere against a cold table and
+    // compounds down the tree -- measured at -59% nodes, which is not a
+    // reduction, it is searching a different and much shallower tree.
+    if ((PvNode || cutNode) && depth >= tunable::IirDepth && ttMove == MOVE_NONE)
+        --depth;
+
     Move moves[MAX_MOVES];
     int  scores[MAX_MOVES];
     const int count = int(generate<ALL>(pos, moves) - moves);
