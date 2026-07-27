@@ -18,6 +18,7 @@
 #include "movegen.h"
 #include "perft.h"  // move_to_uci
 #include "tt.h"
+#include "tunable.h"
 
 namespace rogatia::search {
 
@@ -64,8 +65,8 @@ constexpr int Ln[64] = {
 // so a wrong guess about it is expensive.
 int lmr_base(bool noisy, int depth, int moveCount) {
     const int product = Ln[std::min(depth, 63)] * Ln[std::min(moveCount, 63)];
-    return noisy ? 205 + product / 3277    // 0.20 + ln*ln/3.20
-                 : 819 + product / 2304;   // 0.80 + ln*ln/2.25
+    return noisy ? tunable::LmrNoisyBase + product / tunable::LmrNoisyDiv
+                 : tunable::LmrQuietBase + product / tunable::LmrQuietDiv;
 }
 
 // ------------------------------------------------------------ search state --
@@ -133,7 +134,10 @@ void update_history(int& slot, int bonus) {
     slot += bonus - slot * std::abs(bonus) / MAX_HISTORY;
 }
 
-int history_bonus(int depth) { return std::min(300 * depth - 250, 2400); }
+int history_bonus(int depth) {
+    return std::min(tunable::HistBonusMul * depth - tunable::HistBonusSub,
+                    tunable::HistBonusMax);
+}
 
 // The continuation-history slot for playing `pc` to `to` after the move made
 // at `prev`.  Null when that ply holds no real move.
@@ -493,8 +497,8 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     // Reverse futility pruning: we are so far above beta that even giving up
     // the margin -- roughly a piece per ply of depth -- would not bring the
     // score back down.  Fail high on the static eval without searching.
-    if (!PvNode && !inCheck && depth <= 8 && !is_mate_score(beta)
-        && staticEval - 75 * (depth - improving) >= beta)
+    if (!PvNode && !inCheck && depth <= tunable::RfpDepth && !is_mate_score(beta)
+        && staticEval - tunable::RfpMargin * (depth - improving) >= beta)
         return staticEval;
 
     // Null move pruning: hand the opponent a free move.  If the position is
@@ -504,11 +508,12 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     // board, since pawn endings are where a null move lies.
     // ponytail: no verification search at high depth.  Upgrade path is a
     // re-search at depth-R with null move disabled before trusting the cutoff.
-    if (!PvNode && !inCheck && depth >= 3 && staticEval >= beta
+    if (!PvNode && !inCheck && depth >= tunable::NmpDepth && staticEval >= beta
         && (ss - 1)->currentMove != MOVE_NULL && !is_mate_score(beta)
         && (pos.pieces(pos.side_to_move()) & ~pos.pieces(PAWN) & ~pos.pieces(KING))) {
 
-        const int R = 3 + depth / 3 + std::min((staticEval - beta) / 200, 3);
+        const int R = tunable::NmpBase + depth / tunable::NmpDepthDiv
+                    + std::min((staticEval - beta) / tunable::NmpEvalDiv, tunable::NmpEvalCap);
 
         ss->currentMove = MOVE_NULL;
         ss->movedPiece  = NO_PIECE;
@@ -555,15 +560,17 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         // is not worth it.  Only once something non-losing is already in hand,
         // so a node can never be left without a score.
         if (!PvNode && !inCheck && isQuiet && best > -VALUE_MATE_IN_MAX_PLY
-            && depth <= 8 && moveCount >= 3 + depth * depth / (2 - improving))
+            && depth <= tunable::LmpDepth
+            && moveCount >= tunable::LmpBase + depth * depth / (2 - improving))
             continue;
 
         // SEE pruning: the move loses material outright by more than the depth
         // left could plausibly win back.  Quiets are given a wider allowance --
         // a quiet move that hangs a piece is usually still a real idea, whereas
         // a capture that loses material rarely is.
-        if (!rootNode && best > -VALUE_MATE_IN_MAX_PLY && depth <= 8
-            && !see_ge(pos, m, -(isQuiet ? 80 : 30) * depth))
+        if (!rootNode && best > -VALUE_MATE_IN_MAX_PLY && depth <= tunable::SeeDepth
+            && !see_ge(pos, m, -(isQuiet ? tunable::SeeQuietMargin : tunable::SeeNoisyMargin)
+                                   * depth))
             continue;
 
         if (isQuiet && quietCount < MAX_QUIETS_TRACKED)
@@ -587,15 +594,15 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             // shallower and only pay full depth if it surprises us.
             int newDepth = depth - 1;
 
-            if (depth >= 3 && moveCount > 2) {
+            if (depth >= tunable::LmrDepth && moveCount > tunable::LmrMoveCount) {
                 int r = lmr_base(!isQuiet, depth, moveCount);
 
-                r += cutNode * 2 * LMR_SCALE;  // by far the largest term
+                r += cutNode * tunable::LmrCutNode;  // by far the largest term
                 r -= PvNode * LMR_SCALE;
                 r -= improving * LMR_SCALE;
                 r -= inCheck * LMR_SCALE;
                 if (isQuiet)
-                    r -= W.history[us][from_sq(m)][to_sq(m)] * LMR_SCALE / 8192;
+                    r -= W.history[us][from_sq(m)][to_sq(m)] * LMR_SCALE / tunable::LmrHistDiv;
 
                 newDepth = std::clamp(depth - (r / LMR_SCALE), 1, depth - 1);
             }
@@ -778,7 +785,7 @@ void iterative_deepening(Position& pos, int maxDepth) {
         // Aspiration windows: the score rarely moves far between iterations,
         // so guessing a narrow window around the last one gets far more cutoffs
         // -- at the cost of a re-search when the guess is wrong.
-        Score delta = 20;
+        Score delta = tunable::AspWindow;
         Score alpha = -VALUE_INFINITE;
         Score beta  = VALUE_INFINITE;
 

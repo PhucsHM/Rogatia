@@ -34,3 +34,8 @@ config.json
 .idea/
 .DS_Store
 compile_commands.json
+rogatia-base
+rogatia-phase4
+sprt-results/
+books/
+tools/

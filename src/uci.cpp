@@ -14,6 +14,7 @@
 #include "position.h"
 #include "search.h"
 #include "tt.h"
+#include "tunable.h"
 
 namespace rogatia {
 
@@ -148,6 +149,10 @@ void cmd_setoption(Engine& e, std::istringstream& is) {
         TT.resize(std::size_t(e.hashMb));
     } else if (name == "Move Overhead") {
         e.moveOverhead = std::clamp(parse_int(value, MOVE_OVERHEAD_DEFAULT), 0, 5000);
+    } else {
+        // Every search constant lives in tunable.h so SPSA can drive it without
+        // a recompile.  Unknown names still fall through silently, as UCI wants.
+        tunable::set_option(name, parse_int(value, 0));
     }
     // "Threads" is accepted and ignored: OpenBench requires the option to
     // exist, and Phase 7 owns SMP.
@@ -174,8 +179,9 @@ void uci_loop() {
                       << "option name Threads type spin default 1 min 1 max 1\n"
                       << "option name Move Overhead type spin default " << MOVE_OVERHEAD_DEFAULT
                       << " min 0 max 5000\n"
-                      << "uciok\n"
                       << std::flush;
+            tunable::print_options();
+            std::cout << "uciok\n" << std::flush;
         } else if (token == "isready") {
             std::cout << "readyok\n" << std::flush;
         } else if (token == "ucinewgame") {
