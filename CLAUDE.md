@@ -60,9 +60,35 @@ bench 4712710
 
 ## Current status
 
-**Phases 1–6 complete. Phase 7 (full search build-out) is next.** See `docs/ROADMAP.md` for the full arc.
+**Phases 1–6 complete. Phase 7 (full search build-out) is in progress.** See `docs/ROADMAP.md` for the full arc.
 
-Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake, movegen (perft 37/37, 626,461,214 nodes bit-exact), fail-soft PVS with iterative deepening and aspiration windows, quiescence with SEE and delta pruning, bucketed TT, killers, butterfly history, continuation history, null move, LMR, RFP, LMP, SEE pruning, futility pruning, razoring, history pruning of quiets, internal iterative reduction, singular extensions, **NNUE evaluation** (`(768 → 256)x2 → 1`, SCReLU, incremental accumulator), tapered PeSTO PSQT as the no-net fallback, full UCI, 33 search constants exposed as UCI spin options (`src/tunable.h`), deterministic bench (**4,994,552** with a net, **6,991,803** without, at depth 12 — these move with every search change, so trust the CHANGELOG state table over any number quoted in prose).
+Merged in Phase 7 so far: **singular extensions** (+39.04 +/- 12.69, 1,296 games) and
+**correction history** on the pawn and non-pawn keys (+33.13 +/- 11.60, 1,504 games).
+
+**The Phase 7 work is now aimed by measurement rather than by the roadmap's
+feature list.** Replaying the 720-game Zahak gauntlet through `scripts/style.py`
+and `scripts/draw-anatomy.py` found one dominant weakness: against Zahak 8.0, the
+opponent it is evenly matched with, **46 of 86 draws were positions the engine
+had itself evaluated at +1.00 or better — 19% of every game played.** Zahak threw
+away far fewer from the same 86 games. Split by how the draw arrived:
+
+| Draw ended as | We were +1.00 | We never were |
+|---|---|---|
+| Three-fold repetition | **22** | 20 |
+| Fifty-move rule | **7** | 19 |
+| Dead material | **17** | 1 |
+
+Three different causes, three different fixes, and the fifty-move bucket is the
+smallest rather than the largest — 19 of the 26 fifty-move draws came from
+positions that were never winning, where a fifty-move draw is a good result.
+This is what Phase 7 is now working through, in that order of size.
+
+Under test or queued, none merged: **Syzygy probing in search** (`phase7-syzygy`),
+**the repetition ply distinction** (`phase7-repetition`), **the fifty-move eval
+taper** (`phase7-rule50`). `scripts/testqueue.ps1` runs them back to back
+unattended — see `docs/TESTING.md`.
+
+Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake, movegen (perft 37/37, 626,461,214 nodes bit-exact), fail-soft PVS with iterative deepening and aspiration windows, quiescence with SEE and delta pruning, bucketed TT, killers, butterfly history, continuation history, null move, LMR, RFP, LMP, SEE pruning, futility pruning, razoring, history pruning of quiets, internal iterative reduction, singular extensions, **NNUE evaluation** (`(768 → 256)x2 → 1`, SCReLU, incremental accumulator), tapered PeSTO PSQT as the no-net fallback, full UCI, 33 search constants exposed as UCI spin options (`src/tunable.h`), deterministic bench (**4,772,409** with a net, **6,951,633** without, at depth 12 — these move with every search change, so trust the CHANGELOG state table over any number quoted in prose).
 
 Build with a net: `make EVALFILE=/abs/path/to/net.nnue`. Nets are gitignored; the Phase 6 net is `nets/rogatia-p6.nnue`, trained on 112,000,683 self-play positions. `make run-nnue EVALFILE=...` is the accumulator gate — treat it as perft for the evaluation.
 
@@ -78,20 +104,48 @@ Inverse-variance weighted: **3195 +/- 24**. The three anchors disagree by only 8
 
 **Caveat: the three anchors are three versions of one engine**, so they share a playing style and are not fully independent the way three different engines would be. Zahak was chosen because it publishes a Linux binary for every version and its versions happen to span the band; Weiss and Simbelmyne have no usable Linux x86-64 assets, and Viridithas jumps 3244 -> 3423 with nothing between. Add a second family before treating 3195 as settled.
 
+**Deprioritised 2026-07-28.** The current rating is not what is being optimised, so
+whether ~3175 is exactly right changes no decision being made now. It matters again
+before a number is published anywhere.
+
 The previous anchor set (Toad 1776, Goldfish 2252, Blunder 8.5.5 2664) is retired: the engine scored 99.4%, 96.0% and 95.4% against them. Ratings read 2026-07-28 from `https://computerchess.org.uk/404/rating_list_all.html`.
 
 Reproduce: `CONCURRENCY=6 scripts/gauntlet.sh 240 ./rogatia`. Full protocol in `docs/TESTING.md`.
 
-Next concrete task: **Phase 7, the full search build-out** — extensions, singular search, better time management, SMP. The evaluation is no longer the weak link; the search is.
+Next concrete task: **finish the conversion work above, then SMP.** Multithreading is the
+largest unbuilt item in Phase 7 and it now pays twice: strength, and testing throughput,
+which the 3500 target makes the binding constraint.
+
+**Settled 2026-07-28, do not relitigate.** "Is the search or the evaluation the weak
+link?" — both get worked as opportunities appear. The gauntlet showed the engine reaching
+**24.8 plies against Zahak 8.0's 15.5 for an even score**, which is a reason to expect
+Phase 8's larger net to pay well, but nominal depth is not comparable across engines and
+it gates nothing.
 
 **Superseded — the anchor set was exhausted, and has been replaced.** For the record: on 2026-07-28 the engine scored **219-1-20 (95.4%) against Blunder 8.5.5**, the last of the original anchors that still worked, which is the same saturated regime that had already made Toad and Goldfish useless. A naive conversion read ~3190 and was not quoted, because at a 95% score the Elo model is too compressed to trust. The Zahak bracket above replaced the set the same day and put the engine at 3195 +/- 24 — which happens to land on the same figure, but this time from three unsaturated anchors that agree, rather than one that had run out of resolution.
 
 **Partly fixed in Phase 4: the corrupt PV lines.** The `Illegal PV move` class is
 genuinely gone — 720 gauntlet games and a 2,308-game SPRT both produced zero.
-A second class survives: **`PV continues after checkmate`, ~0.4 per game**, seen
-from both engines in the 2026-07-28 SPRT, so it predates Phase 4's fix rather
-than being caused by it. Harmless to results — fastchess warns and plays the
-`bestmove` — but it means PV construction still has a gap. Not yet diagnosed.
+**The second class is now diagnosed and fixed** (branch `phase7-pvfix`,
+measured at 0.27 per game before). At a PV node the line is assembled by copying
+the child's: `pv[ply] = move`, then a memcpy of `pv[ply + 1]` for
+`pvLen[ply + 1]` moves. That is only valid when the child actually ran as a PV
+node — moveCount 1, or the full-window re-search, which is guarded by
+`score > alpha && score < beta`. **When a null window fails high, no PV child
+ever runs and `pvLen[ply + 1]` still holds the length an earlier, deeper search
+left in that slot**, so the memcpy splices a line from a different position onto
+a perfectly good move.
+
+It needs no SPRT and bench proves it: `W.pv` is read only for reporting and for
+`rootBestMove`, which still takes `pv[0][0]`, so the move chosen at every node is
+identical and bench is unchanged at 4,772,409. It changes what the engine *says*,
+never what it plays.
+
+Worth knowing how it hid: **a cold fixed-depth search cannot show it.** `pvLen`
+starts zeroed, so there is nothing stale to copy; the engine has to be warm, the
+way a game leaves it. `scripts/pvcheck.py` replays real games through one process
+and validates every reported PV against a board — 20 games, ~65,000 PVs, one
+corrupt line before and none after.
 
 ### Phase 6 2026-07-28 — first NNUE, SPRT +360 +/- 70
 

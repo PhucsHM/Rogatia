@@ -2,7 +2,28 @@
 
 A UCI chess engine written from scratch in C++20, optimized for blitz time controls (5+0 and faster).
 
-**Status: early development.** Phases 1–5 complete — move generation is perft-exact (37/37, 626,461,214 nodes), the search carries the core pruning set (null move, LMR, RFP, LMP, SEE pruning, continuation history), every search constant is exposed as a UCI option for tuning, and self-play data generation writes [bulletformat](https://github.com/jw1912/bulletformat) with Syzygy adjudication. Latest measurement: **~2799 ±42 CCRL Blitz**, from 720 games — but it rests on a single usable anchor and is weaker evidence than the 2197 it replaces, so treat it as provisional until the anchor set is rebuilt in the 2700–3000 band. Next milestone is the first NNUE. See [`docs/ROADMAP.md`](docs/ROADMAP.md) and [`docs/TESTING.md`](docs/TESTING.md).
+**Status: Phase 7 of 9, search build-out.**
+
+Move generation is perft-exact (37/37, 626,461,214 nodes). The search is a
+fail-soft PVS with iterative deepening, aspiration windows, a bucketed
+transposition table, the full low-depth pruning set (null move, LMR, RFP, LMP,
+SEE pruning, futility, razoring, history pruning, internal iterative reduction),
+singular extensions, and correction history on the pawn and non-pawn keys.
+Evaluation is a **self-trained NNUE**, `(768 -> 256)x2 -> 1` with SCReLU and an
+incremental accumulator, trained on 112 million of the engine's own self-play
+positions. All 33 search constants are exposed as UCI options.
+
+Latest measurement: **~3175 CCRL Blitz**, from a 720-game gauntlet against three
+CCRL-rated anchors. The arithmetic returns 3195 +/- 24; three caveats all push it
+down and none push it up, so ~3175 is the honest figure. All three anchors are
+versions of one engine, so a second family is needed before the number is worth
+publishing.
+
+Current work is aimed by measurement rather than by a feature list. Replaying the
+gauntlet showed that **19% of all games were positions the engine evaluated as
+winning and then drew** — three separate causes, three separate fixes, each on
+its own branch under its own test. See [`CHANGELOG.md`](CHANGELOG.md),
+[`docs/ROADMAP.md`](docs/ROADMAP.md) and [`docs/TESTING.md`](docs/TESTING.md).
 
 ## Goals
 
@@ -34,7 +55,8 @@ Rogatia speaks [UCI](https://www.chessprogramming.org/UCI) and runs in any stand
 | Sliding attacks | Black magic bitboards, with a PEXT path behind `__BMI2__` |
 | Move generation | Pseudo-legal, generated in one pass, with a legality filter and a selection-sort picker |
 | State | Make/unmake with an explicit undo stack |
-| Evaluation | PSQT now; NNUE from Phase 6 |
+| Evaluation | NNUE `(768 -> 256)x2 -> 1`, SCReLU, incremental; tapered PSQT as the no-net fallback |
+| Endgames | Syzygy 3-4-5 via vendored [Fathom](https://github.com/jdart1/Fathom): WDL in search, DTZ at the root |
 | Testing | [fastchess](https://github.com/Disservin/fastchess) SPRT, then OpenBench |
 | NNUE trainer | [bullet](https://github.com/jw1912/bullet) |
 

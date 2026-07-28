@@ -14,7 +14,8 @@ are sitting.
 
 | | |
 |---|---|
-| Phases complete | 1–6. **Phase 7 in progress** — singular extensions (+39.04 +/- 12.69) and correction history (+33.13 +/- 11.60) merged. |
+| Phases complete | 1–6. **Phase 7 in progress.** Merged: singular extensions (+39.04 +/- 12.69), correction history (+33.13 +/- 11.60). Under test: syzygy, repetition, fifty-move taper — see "Phase 7 conversion work" below. |
+| Target | **3500+ CCRL Blitz** (raised from 3200 on 2026-07-28). Blitz-only: measured on CCRL Blitz, tuned at the time control it plays, never verified at a slower one. |
 | Strength | **~3175 CCRL Blitz** — see "What the rating actually says" below. The gauntlet arithmetic returns 3195 +/- 24; three separate caveats all push it down, none up. |
 | Bench, with a net | **4,772,409** (4,063,328 at `base-phase6`) |
 | Bench, no net | **6,951,633** |
@@ -90,6 +91,58 @@ make EVALFILE="$(pwd)/nets/rogatia-p6.nnue"
 **Always check the checksum.** Two machines holding different nets produce
 different benches, and every comparison between them is then meaningless in a
 way nothing warns you about.
+
+---
+
+## Phase 7 conversion work — set 2026-07-28
+
+Replaying the 720-game Zahak gauntlet found one dominant weakness, and it is not
+the one the roadmap predicted. Against Zahak 8.0 — the opponent the engine is
+evenly matched with — **46 of 86 draws were positions the engine had itself
+evaluated at +1.00 or better.** That is 19% of every game played, and Zahak threw
+away far fewer from the same 86 games.
+
+| Draw ended as | We were +1.00 | We never were |
+|---|---|---|
+| Three-fold repetition | **22** | 20 |
+| Fifty-move rule | **7** | 19 |
+| Dead material | **17** | 1 |
+
+Three causes, three fixes, each on its own branch and each with its own test.
+The fifty-move bucket is the *smallest*, not the largest: 19 of the 26 fifty-move
+draws came from positions that were never winning, where a fifty-move draw is a
+good result and nothing should change.
+
+| Branch | Fixes | Bench | State |
+|---|---|---|---|
+| `phase7-syzygy` | Dead material — the search had never probed the tablebases sitting on disk | 4,772,409 (unchanged, dormant without `SyzygyPath`) | under test |
+| `phase7-repetition` | Three-fold — the engine scored a position the real game had visited *once* as a draw, where the rules need three | 4,772,409 (unchanged; bench FENs carry no game history, so the change is only reachable through `position ... moves ...`) | queued |
+| `phase7-rule50` | Fifty-move — the evaluation could not read the counter at all | 4,772,409 (unchanged; the taper starts above a threshold an ordinary search never reaches) | queued |
+| `phase7-pvfix` | The `PV continues after checkmate` warning, unexplained since before Phase 4 | 4,772,409 (unchanged — which is the proof: it changes what the engine says, never what it plays) | no SPRT needed |
+
+**All four are bench-neutral, and that is the point rather than a coincidence.**
+Bench is the fingerprint of what the engine decides, so an unchanged count means
+identical decisions in the bench positions. These fixes only reach situations
+bench never visits: real game history behind the position, a running fifty-move
+counter, and tablebase range. It is also why the datagen run in progress was left
+alone — the labels for ordinary positions are unchanged bit for bit.
+
+`scripts/testqueue.ps1` runs the queue unattended; `docs/TESTING.md` has the
+protocol and the analysis scripts that found all of this.
+
+### Settled the same day, do not relitigate
+
+- **Target is 3500**, not 3200. Phase 9 and OpenBench both become requirements.
+- **A second anchor family** is deprioritised — the current rating is not what is
+  being optimised.
+- **Verification at 20+0.2** will not be run. For a blitz-only engine, short-TC
+  tuning bias is aligned with the goal.
+- **"Search or evaluation?"** — both, as opportunities appear. The 24.8-vs-15.5
+  depth observation is a reason to expect Phase 8 to pay well, not a gate.
+- **SPSA is off the table on this box.** `SingularDepth` 10-vs-8 measured
+  -9.41 +/- 12.37 over 1,440 games, so the hand-picked defaults are not badly
+  set; and with the published constants (Rk 0.002, ck 4cp) the driver needs tens
+  of thousands of games to move a parameter at all. It belongs on OpenBench.
 
 ---
 

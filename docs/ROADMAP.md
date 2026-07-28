@@ -162,6 +162,20 @@ Build the **`-march` bench-determinism check here**, the moment inference first 
 This is deliberately early. The net is scaffolding: it exists to make the *next* net possible, and the first one being trained on somewhat weak labels costs little because it gets retrained 4–8 times regardless.
 
 ### Phase 7 — Full search build-out (2–3 months) → **~3000–3100**
+
+**In progress.** Merged: singular extensions (+39.04 +/- 12.69), correction
+history (+33.13 +/- 11.60). Under test or queued: Syzygy probing in search, the
+repetition ply distinction, the fifty-move eval taper.
+
+**The phase is being driven by measurement rather than by this list.** The
+720-game gauntlet showed 19% of all games were positions the engine evaluated as
+winning and then drew, from three separate causes -- see "Phase 7 conversion
+work" in `CHANGELOG.md`. Two items on this list changed status as a result:
+**SPSA is dropped** on this hardware (a 1,440-game test of the single
+best-attested tuning gain returned -9.41 +/- 12.37, and the published constants
+need tens of thousands of games to move a parameter), and **SMP is now the
+largest remaining item** -- at a 3500 target it buys testing throughput as well
+as strength, and testing throughput is the binding constraint.
 The rest of the modern search, now on top of an engine that is already ~2800:
 
 **Pre-loop:** internal iterative reduction → razoring → ProbCut → multicut (non-PV only).

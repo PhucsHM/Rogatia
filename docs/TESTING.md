@@ -160,6 +160,84 @@ is what SPRT is for.
 
 ---
 
+## Running tests unattended
+
+A verdict takes hours and there is one machine, so tests run back to back rather
+than in parallel. `scripts/testqueue.ps1` does that without supervision:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/queue-start.ps1
+```
+
+It launches detached, so it survives the terminal closing or an agent session
+ending. Progress goes to `sprt-results/queue-summary.log`; stop it with
+`Stop-Process -Id <pid>`.
+
+What it does and does not do:
+
+- **Waits for a free machine.** It never starts a second match beside a running
+  one -- two matches on one box distort each other's timing and both results
+  become worthless.
+- **Resumes.** Finished tests are recorded in `sprt-results/queue-state.json`,
+  so a reboot picks up where it left off instead of repeating four hours.
+- **Flags suspends.** A wall-clock jump over 150 seconds is logged. Sleeping the
+  machine makes every engine clock leap at once and the games in flight lose on
+  time through no fault of the patch; without the log a corrupted verdict reads
+  as a clean one.
+- **Builds nothing.** The Makefile needs a POSIX shell, and a build failure four
+  hours into an unattended run is the worst possible time to find one. Every
+  binary is built and gated *before* it joins the queue; a missing one is logged
+  and skipped, never guessed at.
+
+Edit the `$Queue` array to add tests. Order matters -- put the patch that might
+*lose* first, so a negative result arrives before a free win has been banked.
+
+**On sleep.** Idle sleep is disabled on this laptop so an open-lid test runs as
+long as it needs. Closing the lid still sleeps the machine, deliberately: eight
+engines at full load inside a closed laptop is a thermal problem, and sleeping
+is the safe failure. Stop the queue by hand before moving the machine.
+
+---
+
+## Analysing the games afterwards
+
+An SPRT says whether a patch gained Elo. It does not say whether it worked for
+the reason you thought, and that is the question that decides what to build
+next. Three scripts read the PGNs a test already produced:
+
+```bash
+python scripts/style.py       sprt-results/<test>.pgn    # playing-style profile
+python scripts/draw-anatomy.py sprt-results/<test>.pgn   # why the draws happened
+python scripts/pvcheck.py ./rogatia <games>.pgn 20 60    # validate reported PVs
+```
+
+`style.py` implements Stefan Pohl's published EAS component definitions.
+**Do not quote its EAS number.** Measured on two configurations of the same
+binary differing only in `SingularDepth`, the full score read 15,934 and 9,555 --
+a 67% gap between engines that cannot differ in style at all -- while the stable
+core read 2,652 and 2,514. Eleven games out of 501 wins drove the difference,
+because the heaviest buckets carry x100 weights against single-digit counts.
+Read the stable core, or get thousands of won games.
+
+`draw-anatomy.py` is what located the Phase 7 work: it splits drawn games by how
+they ended *and* whether the engine had been winning, which turns "we draw too
+much" into three separately fixable causes.
+
+Worked example -- the syzygy patch was built to stop the engine liquidating into
+dead-drawn endings, and the PGN confirms the mechanism, not just the Elo:
+
+| Dead-material draws | tablebases off | tablebases on |
+|---|---|---|
+| while we were winning | 57 | **17** |
+| while we were *not* winning | 1 | **41** |
+
+The composition inverted while the total stayed at 58. It also showed the cost:
+three-fold draws from winning positions went 69 -> 88, because games escaped one
+draw bucket into another rather than into the win column. That is how the next
+test in the queue got chosen.
+
+---
+
 ## Two machines
 
 | Machine | Cores | Role |
