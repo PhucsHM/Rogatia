@@ -85,21 +85,49 @@ for entry in "${QUEUE[@]}"; do
 
     log "$name : starting -- $dev vs $base, tc=$TC, bounds [$elo0, $elo1]"
 
+    # fastchess writes ./config.json continuously, carrying the full running
+    # state -- W/L/D and the pentanomial pair counts -- and can restart from it
+    # with `-config file=...`.  That is the difference between a stop costing
+    # twenty seconds and costing the whole test: on 2026-07-28 a syzygy run was
+    # killed at 2,322 games and restarted from zero for exactly this reason.
+    #
+    # It is one shared file in the repo root, so the next test overwrites it.
+    # Snapshot it under this test's name while the match runs; only one match
+    # runs at a time, so the file always belongs to the current test.
+    resume=$OUT/$name.config.json
+    snapshot_config() {
+        while kill -0 "$1" 2>/dev/null; do
+            [ -f config.json ] && cp -f config.json "$resume" 2>/dev/null
+            sleep 60
+        done
+    }
+
     started=0
     for attempt in 1 2; do
         # Retry once.  A freshly built .exe is scanned on its first execution,
         # and sixteen launching at once can blow fastchess's uciok deadline.
         # The second attempt runs against warm binaries.
-        # shellcheck disable=SC2086
-        $FASTCHESS \
-            -engine cmd="./$dev" name=dev $extra \
-            -engine cmd="./$base" name=base \
-            -each tc="$TC" option.Hash="$HASH" option.Threads=1 \
-            -openings file="$BOOK" format=epd order=random \
-            -sprt elo0="$elo0" elo1="$elo1" alpha=0.05 beta=0.05 model=normalized \
-            -rounds 100000 -games 2 -repeat \
-            -concurrency "$CONCURRENCY" -recover \
-            -pgnout file="$OUT/$name.pgn" > "$OUT/$name.log" 2>&1
+        if [ -f "$resume" ]; then
+            log "$name : resuming from $(basename "$resume") -- earlier games are kept"
+            cp -f "$resume" config.json
+            $FASTCHESS -config file=config.json >> "$OUT/$name.log" 2>&1 &
+        else
+            # shellcheck disable=SC2086
+            $FASTCHESS \
+                -engine cmd="./$dev" name=dev $extra \
+                -engine cmd="./$base" name=base \
+                -each tc="$TC" option.Hash="$HASH" option.Threads=1 \
+                -openings file="$BOOK" format=epd order=random \
+                -sprt elo0="$elo0" elo1="$elo1" alpha=0.05 beta=0.05 model=normalized \
+                -rounds 100000 -games 2 -repeat \
+                -concurrency "$CONCURRENCY" -recover \
+                -pgnout file="$OUT/$name.pgn" > "$OUT/$name.log" 2>&1 &
+        fi
+        fc_pid=$!
+        snapshot_config "$fc_pid" &
+        snap_pid=$!
+        wait "$fc_pid"
+        kill "$snap_pid" 2>/dev/null
 
         started=$(grep -c 'Started game' "$OUT/$name.log" 2>/dev/null || echo 0)
         [ "$started" -gt 8 ] && break
@@ -123,6 +151,7 @@ for entry in "${QUEUE[@]}"; do
     log "$name :   $(grep -E '^Elo:'   "$OUT/$name.log" 2>/dev/null | tail -1)"
 
     echo "$name" >> "$STATE"
+    rm -f "$resume"          # finished: nothing left to resume from
 done
 
 log '================ queue drained ================'
