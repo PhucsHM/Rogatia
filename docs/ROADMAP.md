@@ -187,8 +187,41 @@ eight single-threaded games at once, and making the engine multithreaded changes
 none of that. Testing at Threads=2 and concurrency 4 would use the same cores
 for *fewer* games per hour.
 
-SMP is still worth building eventually -- tournaments, the 4CPU list, ordinary
-use -- but it is not on the path to 3500 and must not displace work that is.
+SMP is still worth building -- tournaments, the 4CPU list, ordinary use, and
+the stated intent that this become a complete engine rather than a blitz
+specialist -- but it is not on the path to 3500 and must not displace work that
+is.  **Build it deliberately, in daylight, not as the tail of an overnight
+batch.**  A threading bug is the one class of defect none of this project's
+gates can catch: perft is single-threaded, bench is single-threaded, and an
+SPRT runs `Threads=1`.  A race would reach a tournament unmeasured.
+
+### SMP design, when it is built
+
+Lazy SMP.  N threads all search the root independently and share the
+transposition table; they diverge naturally through timing and the table
+carries what one finds to the others.  Concretely, in this engine:
+
+1. **`Worker` becomes per-thread.**  It is one global today, and the comment on
+   it already says so.  History, continuation history, correction history, the
+   PV array and the stack all move with it.  The transposition table stays
+   shared -- that is the whole mechanism.
+2. **The TT needs no locks, and this engine is already safe for it.**  Races
+   produce torn entries, and a torn entry yields a garbage move.  Every TT move
+   already goes through `is_pseudo_legal` before it is played, for the key16
+   collision case, and that same check makes a torn entry harmless.  Confirm
+   the reasoning still holds before relying on it.
+3. **Only the main thread reports.**  `print_info`, `bestmove` and the time
+   checks belong to thread 0; helpers search and are stopped by the same
+   `Stopped` flag.
+4. **`Threads` stops being accepted-and-ignored.**  Its maximum rises from 1,
+   and OpenBench needs it to mean what it says.
+5. **Determinism is lost above one thread, and that is expected.**  `bench`
+   must keep running single-threaded so the fingerprint survives; verify
+   `Threads=1` reproduces the current node count exactly before trusting
+   anything above it.
+
+The honest gate: SMP is worth roughly +60-80 Elo at 4 threads on hardware that
+allows it, and 0 on the lists this project is measured against.
 
 The rest of the modern search, now on top of an engine that is already ~2800:
 
