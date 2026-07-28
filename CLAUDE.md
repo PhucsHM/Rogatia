@@ -1,9 +1,15 @@
 # Rogatia — engine development guide
 
-UCI chess engine. C++20, GPL-3.0. Target: **3500+ CCRL Blitz**, and blitz is the whole
-point -- the engine is tuned for **5+0 and faster** and is not meant to be competitive
-at classical. Short-TC tuning bias is therefore *aligned* with the goal, not a
-compromise, which is why nothing here is verified at a slower time control.
+UCI chess engine. C++20, GPL-3.0. Target: **3500+ CCRL Blitz**. Blitz is the tuning
+time control and the near-term goal -- the engine is tuned at **5+0 and faster** and
+measured on CCRL Blitz.
+
+**Standard time controls are a later goal, not an excluded one** (set 2026-07-28).
+That does not reorder the roadmap: the search architecture is the same at 5+0 and
+40+40, and everything built so far is time-control neutral or better at long time
+controls. What it does change is that blitz bias must stay *reversible* -- pruning
+margins are the divergence risk, and each phase ends with one non-regression run at
+20+0.2 rather than every patch being verified there. See "Blitz focus" below.
 
 Read this before touching anything. The full phased roadmap with Elo gates is in `docs/ROADMAP.md`, and **`CHANGELOG.md` is the handoff protocol between the two machines** — what state the engine is in, what the other box is probably doing, and how to get a working build (the net is not in git).
 
@@ -308,7 +314,55 @@ The search architecture for 5+0 is identical to 40+40. Only these actually diffe
 - **Time management.** Soft limit checked between ID iterations, hard limit checked every ~1024 nodes. Multiply the soft budget by three independent scalers: **node-based TM** (if the best move consumed most of the search tree the position is easy — move fast; ~15–25 Elo and the cheapest big win available), **best-move stability** (unchanged for many iterations → shrink the budget), and **score trend** (asymmetric — spend more when the eval is falling than when it is rising).
 - **Move overhead** 10–50 ms. Losing on time costs a full point; a 3% weaker move costs ~0.005. The asymmetry is enormous — be conservative.
 - **Don't over-allocate hash.** At 5+0 you cannot fill a large table anyway, and cache locality beats capacity.
-- Accept that an engine tuned hard for blitz scores relatively worse on CCRL 40/15 than on CCRL Blitz. That is the intended trade, not a bug.
+- An engine tuned hard for blitz scores relatively worse on CCRL 40/15 than on CCRL Blitz. **That trade is accepted for now but is no longer permanent** — see below.
+
+### Standard time controls are a later goal (set 2026-07-28)
+
+Blitz stays the tuning time control and the near-term target. Standard is wanted
+eventually, which changes nothing about *what* gets built and two things about
+*how it is checked*.
+
+**Why so little changes:** the search architecture for 5+0 and 40+40 is the same,
+as the top of this section says. Everything merged so far — singular extensions,
+correction history, Syzygy probing, the fifty-move taper — is time-control
+neutral in direction, and the first two are worth *more* at long time controls,
+not less, because a deeper search compounds a better move ordering. Phase 8 is
+the same story: a stronger evaluation pays more when the search goes deeper. So
+the roadmap does not need reordering for this.
+
+**What does change — and it is the real exposure:**
+
+1. **Pruning margins are the STC/LTC divergence risk.** A margin tuned to be
+   aggressive at 8 seconds can be actively wrong at 40 minutes, where the extra
+   depth would have found what the pruning threw away. Search *features* usually
+   keep their sign across time controls; pruning *thresholds* do not reliably.
+   Treat any change to `tunable.h` margins as time-control-suspect, and say so
+   in its commit.
+
+2. **A phase-boundary LTC gate, not a per-patch one.** Verifying every patch at
+   20+0.2 would cut testing throughput by roughly five, which is unaffordable
+   against one machine. Instead, once per phase, run the accumulated stack
+   against the previous phase tag as a **non-regression at `[-10.00, 0.00]`,
+   tc=20+0.2**. That catches a phase's worth of accumulated blitz bias for the
+   cost of one test rather than of every test. It has never been run; Phase 7 is
+   the first one that should.
+
+3. **Time management is the one genuinely TC-specific component**, and the only
+   place where blitz and standard want different code rather than different
+   numbers. `phase7-timeman` is written on blitz assumptions -- move overhead,
+   a node-based scaler, aggressive stability shrinking -- and will need a second
+   set of behaviour for long time controls rather than a retune.
+
+4. **SMP moves from "off the path" to "eventually needed."** It still buys
+   nothing on the single-CPU CCRL lists, blitz or 40/15, so it is still not next.
+   But tournament play and the 4CPU lists are multi-core, and those only become
+   reachable with standard time controls in scope. Build it after Phase 8, not
+   instead of it.
+
+5. **Hash sizing stops being a blitz-only assumption.** "Do not over-allocate
+   hash" is true at 5+0 and false at 40/15, where a large table does get filled.
+   The `Hash` option already spans 1--65536 MB, so nothing needs building; just
+   do not bake the small-table assumption into anything.
 
 ---
 

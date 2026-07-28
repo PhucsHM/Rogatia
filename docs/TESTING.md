@@ -245,6 +245,33 @@ test in the queue got chosen.
 
 ---
 
+## The long-time-control gate
+
+Blitz is the tuning time control, but standard is a later goal, so blitz bias has
+to stay reversible. Verifying every patch at 20+0.2 would cut throughput by
+roughly five against one machine, which is unaffordable. The gate is therefore
+**per phase, not per patch**:
+
+```bash
+git checkout base-phase<N-1> && make EXE=rogatia-prev EVALFILE="$(pwd)/nets/<net>"
+TC=20+0.2 scripts/sprt.sh ./rogatia ./rogatia-prev -10 0
+```
+
+A non-regression at `[-10.00, 0.00]`, tc=20+0.2, of the whole accumulated phase
+against the previous phase tag. One test catches a phase's worth of accumulated
+short-TC bias, instead of every test paying for it.
+
+**What to suspect when it fails.** Search *features* -- extensions, history,
+tablebase probing, a better evaluation -- almost always keep their sign across
+time controls, and several are worth more at long ones. Pruning *thresholds* do
+not: a margin tuned to be aggressive at 8 seconds can be wrong at 40 minutes,
+where the extra depth would have found what it discarded. Start the search in
+`src/tunable.h`, not in the feature list.
+
+This has never been run. Phase 7 is the first phase that should end with it.
+
+---
+
 ## Two machines
 
 | Machine | Cores | Role |
