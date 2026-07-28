@@ -2,7 +2,7 @@
 
 UCI chess engine. C++20, GPL-3.0. Target: **3200+ CCRL**, tuned for **blitz (5+0 and faster)**.
 
-Read this before touching anything. The full phased roadmap with Elo gates is in `docs/ROADMAP.md`.
+Read this before touching anything. The full phased roadmap with Elo gates is in `docs/ROADMAP.md`, and **`CHANGELOG.md` is the handoff protocol between the two machines** — what state the engine is in, what the other box is probably doing, and how to get a working build (the net is not in git).
 
 ---
 
