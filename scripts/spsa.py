@@ -21,6 +21,11 @@ plausible-looking numbers that are worse than what you started with.  The
 self-test optimises a function whose answer is known and asserts convergence,
 which catches sign errors, scaling errors and clamping errors for free.
 
+The self-test never speaks UCI, so it is blind to the other way this wastes a
+week: an engine whose options a harness cannot see.  A real run therefore
+starts with verify_options(), which refuses to play a single game until the
+engine has declared every parameter before `uciok`.
+
 Nothing this produces is trustworthy until it wins its own SPRT against the
 current defaults.  SPSA optimises against the noise it was shown; overfitting
 is the normal outcome, not the exceptional one.
@@ -113,6 +118,32 @@ def play(cfg, plus, minus, pairs):
            "-concurrency", str(cfg.concurrency), "-recover"]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=cfg.timeout).stdout
     return parse_score(out, "A")
+
+
+def verify_options(engine, params):
+    """Abort unless the engine declares every parameter BEFORE uciok.
+
+    An option printed after uciok does not exist as far as any harness is
+    concerned -- fastchess stops collecting there, warns once per game, and
+    silently drops the setoption.  That is not hypothetical: it voided an SPRT
+    on 2026-07-28 and would have voided this driver's entire run, because
+    --selftest never speaks UCI and so cannot see it.  Two seconds here.
+    """
+    out = subprocess.run([engine], input="uci\nquit\n", capture_output=True,
+                         text=True, timeout=30).stdout
+    declared = set()
+    for line in out.splitlines():
+        if line.startswith("uciok"):
+            break
+        if line.startswith("option name "):
+            declared.add(line.split()[2])
+
+    missing = [p.name for p in params if p.name not in declared]
+    if missing:
+        sys.exit("%s does not declare %s before uciok, so a harness will "
+                 "ignore every attempt to set them.\nRebuild from a commit "
+                 "that flushes print_options()." % (engine, ", ".join(missing)))
+    print("%d/%d parameters confirmed settable" % (len(params), len(params)))
 
 
 def spsa(cfg, state=None):
@@ -239,6 +270,8 @@ def main():
     cfg.params = [Param(*p) for p in DEFAULT_PARAMS]
     cfg.iterations = max(1, cfg.games // (cfg.pairs * 2))
     cfg.objective = None
+
+    verify_options(cfg.engine, cfg.params)
 
     state = json.load(open(cfg.resume)) if cfg.resume else None
     print("%d parameters, %d iterations, %d games, tc=%s" % (
