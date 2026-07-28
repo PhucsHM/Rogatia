@@ -57,9 +57,11 @@ bench 4712710
 
 ## Current status
 
-**Phases 1–5 complete. Phase 6 (first NNUE) is next.** See `docs/ROADMAP.md` for the full arc.
+**Phases 1–6 complete. Phase 7 (full search build-out) is next.** See `docs/ROADMAP.md` for the full arc.
 
-Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake, movegen (perft 37/37, 626,461,214 nodes bit-exact), fail-soft PVS with iterative deepening and aspiration windows, quiescence with SEE and delta pruning, bucketed TT, killers, butterfly history, continuation history, null move, LMR, RFP, LMP, SEE pruning, futility pruning, razoring, history pruning of quiets, internal iterative reduction, tapered PeSTO PSQT, full UCI, 31 search constants exposed as UCI spin options (`src/tunable.h`), deterministic bench (**5,001,521** at depth 12).
+Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake, movegen (perft 37/37, 626,461,214 nodes bit-exact), fail-soft PVS with iterative deepening and aspiration windows, quiescence with SEE and delta pruning, bucketed TT, killers, butterfly history, continuation history, null move, LMR, RFP, LMP, SEE pruning, futility pruning, razoring, history pruning of quiets, internal iterative reduction, **NNUE evaluation** (`(768 → 256)x2 → 1`, SCReLU, incremental accumulator), tapered PeSTO PSQT as the no-net fallback, full UCI, 31 search constants exposed as UCI spin options (`src/tunable.h`), deterministic bench (**4,063,328** with a net, **5,001,521** without, at depth 12).
+
+Build with a net: `make EVALFILE=/abs/path/to/net.nnue`. Nets are gitignored; the Phase 6 net is `nets/rogatia-p6.nnue`, trained on 112,000,683 self-play positions. `make run-nnue EVALFILE=...` is the accumulator gate — treat it as perft for the evaluation.
 
 **Measured: ~2799 +/- 42 CCRL Blitz.** 720 games at 8+0.08, `8moves_v3.epd`, Hash=16, Threads=1, concurrency 6, home box, 2026-07-27. Every game ended in a chess result — no time losses, no illegal moves, and no corrupt PV warnings.
 
@@ -69,11 +71,15 @@ Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake,
 | Goldfish 2.1.1 | 2252 +/- 16 | 240 | 223-2-15 | 96.0% | saturated |
 | Blunder 8.5.5 | 2664 +/- 11 | 240 | 138-49-53 | 68.5% | 2799 +/- 42 |
 
+The table above is the **Phase 4** measurement and is kept for history. As of Phase 6 every row is saturated — see the note below.
+
 **This number rests on a single anchor and is weaker evidence than the 2197 it replaces.** Toad and Goldfish are now beaten so decisively that the Elo model returns nothing usable from them, so 2799 is Blunder's own rating plus one measured difference — no cross-check, no disagreement to average away. It also overshoots the Phase 4 gate (~2400–2500) by ~300 and lands at the Phase 6 target *before* NNUE, which is a large enough surprise to deserve suspicion rather than celebration. **Before Phase 6, replace the anchor set with three engines in the 2700–3000 band** so the next measurement has cross-checks again.
 
 Reproduce: `CONCURRENCY=6 scripts/gauntlet.sh 240 ./rogatia`. Full protocol in `docs/TESTING.md`.
 
-Next concrete task: **Phase 6, the first NNUE** — `(768 → 256)x2 → 1` on ~100M positions, trained with `bullet` on the 3090. Generate the data first: `scripts/datagen.sh 7000000 16 5000` is ~4.5 hours for 100M. `bullet` is not installed yet and needs a Rust/CUDA toolchain, neither of which is on this box.
+Next concrete task: **Phase 7, the full search build-out** — extensions, singular search, better time management, SMP. The evaluation is no longer the weak link; the search is.
+
+**Blocking measurement problem: the anchor set is exhausted.** Measured 2026-07-28: **219-1-20 (95.4%) against Blunder 8.5.5**, the only anchor that still worked, in 240 games at 8+0.08. That is the same regime where Toad and Goldfish stopped being usable. A naive conversion gives ~3190, but at a 95% score the Elo model is badly compressed and the figure is not credible — the honest statement is "clearly and far above 2664, unquantified". The engine is now ~+360 Elo above the build that measured 2799, which puts it far beyond Blunder (2664), the only anchor that still produced a usable number. All three anchors are now saturated, so `scripts/gauntlet.sh` cannot produce a rating at all. **Before any Phase 7 number is claimed, add three anchors in the 3000–3300 band.** Until then, SPRT against the previous tag is the only meaningful measurement — which is fine for development, but no CCRL figure should be quoted.
 
 **Partly fixed in Phase 4: the corrupt PV lines.** The `Illegal PV move` class is
 genuinely gone — 720 gauntlet games and a 2,308-game SPRT both produced zero.
@@ -81,6 +87,19 @@ A second class survives: **`PV continues after checkmate`, ~0.4 per game**, seen
 from both engines in the 2026-07-28 SPRT, so it predates Phase 4's fix rather
 than being caused by it. Harmless to results — fastchess warns and plays the
 `bestmove` — but it means PV construction still has a gap. Not yet diagnosed.
+
+### Phase 6 2026-07-28 — first NNUE, SPRT +360 +/- 70
+
+170 games at 8+0.08 against the same tree built without a net: 141-9-20, 88.8%,
+LLR 2.95, H1 accepted on `[0.00, 10.00]`. Bench 5,001,521 → **4,063,328**.
+
+Trained at **wdl=0.3**, not bullet's example default of 0.75. At 0.75 the target
+is mostly game outcomes, which saturates the net — the first scaffold net's evals
+came out about twice the scale of the search scores, and every pruning margin in
+`tunable.h` is calibrated to the old scale, so an inflated eval silently makes
+all of them more aggressive. At 0.3 the slope against held-out labels is 1.075,
+correlation 0.958. **If the eval scale ever changes again, re-check the pruning
+margins before trusting an SPRT.**
 
 ### Merged 2026-07-28 — second pruning set, SPRT +14.61 +/- 10.08
 
