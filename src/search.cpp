@@ -853,6 +853,24 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             if (s < singularBeta)
                 extension = 1;
         }
+        // Check extension.  A checking move forces the reply, so the subtree
+        // under it is narrow -- the opponent has only evasions -- and a ply
+        // spent there buys more than a ply spent on a quiet position of the
+        // same nominal depth.  Tactics also tend to run through checks, so
+        // this is where a shallow search is most likely to be wrong.
+        //
+        // Gated on SEE, deliberately.  Ungated check extensions are a classic
+        // way to make the tree explode, because a losing check is trivial to
+        // find and there are many of them; requiring the check not to lose
+        // material keeps the ones that force something.
+        //
+        // gives_check() is safe to call here: it rebuilds the occupancy for
+        // the move itself and does its own attack lookups, so it never reads
+        // blockers_for_king(), whose entry for the side NOT to move holds the
+        // previous ply's values.  position.h warns that a "fast path" for
+        // exactly this feature is the thing that would reach for it.
+        else if (!rootNode && !excluded && pos.gives_check(m) && see_ge(pos, m, 0))
+            extension = 1;
 
         ss->currentMove = m;
         ss->movedPiece  = pos.piece_on(from_sq(m));
