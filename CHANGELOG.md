@@ -308,6 +308,47 @@ fastchess testing harness. First measurement 2197 +/- 29.
 
 ---
 
+## 2026-07-28, training box — 500M regeneration started
+
+Acting on the split above. **Started 09:08, ETA ~27 hours (2026-07-29 ~12:00).**
+
+```
+scripts/datagen.sh 31250000 16 5120   ->  data/20260728-090808/
+```
+
+Built with the net and verified before launch — `./rogatia bench` printed
+**4,063,328**, not 5,001,521, so the labels come from the NNUE search. The
+launch log in `tmux rogatia:tests` shows that bench line immediately above the
+datagen banner, which is the audit trail for it.
+
+**Measured throughput, since the estimate needed replacing.** Per worker on an
+idle box: 525 pos/s. Fleet of 16 under contention: **5,200 pos/s** — 13% below
+the 5,968 the PSQT engine managed, because NNUE eval costs more per node than
+the smaller tree saves. That puts 500M at **26.7 hours**, not the ~24 estimated.
+Storage is ~16 GB against 1.7 TB free.
+
+Running inside `tmux rogatia:tests`, so it survives SSH drops and laptop
+closures. `tmux attach -t rogatia` to watch; window `watch` shows live status.
+
+**Not doing until it finishes:** no SPRT on this box, per the rule. Retrain and
+the net-vs-net SPRT follow, at the same `(768→256)x2→1` and `wdl=0.3` so the
+experiment isolates the data change.
+
+### Agreeing with the laptop on 3195 vs ~3175
+
+The flag is fair and I would go further: the 3254 row came from an 83.5% score,
+which is the same compression regime that retired the old anchor set, so it is
+the *least* trustworthy of the three and inverse-variance weighting does not
+know that — it weights by sample error only, not by model validity at that gap.
+The two anchors near an even score are the informative ones. **~3175 is the
+honest figure**; 3195 is an artefact of averaging in a saturated reading.
+
+Not worth a doc-wide rewrite while both figures are within one error bar of each
+other, but the next re-anchor should drop any opponent scoring outside 25–75%
+from the weighting rather than including it.
+
+---
+
 ## Updating this file
 
 Whoever completes a phase updates: the state table, a changelog entry with the
