@@ -112,9 +112,11 @@ The previous anchor set (Toad 1776, Goldfish 2252, Blunder 8.5.5 2664) is retire
 
 Reproduce: `CONCURRENCY=6 scripts/gauntlet.sh 240 ./rogatia`. Full protocol in `docs/TESTING.md`.
 
-Next concrete task: **finish the conversion work above, then SMP.** Multithreading is the
-largest unbuilt item in Phase 7 and it now pays twice: strength, and testing throughput,
-which the 3500 target makes the binding constraint.
+Next concrete task: **finish the conversion work above, then Phase 8.** SMP is
+explicitly NOT next -- CCRL Blitz is a single-CPU list, so multithreading buys no
+rating, and it does not speed up testing either (an SPRT runs `option.Threads=1`
+at concurrency 8; making the engine multithreaded changes nothing). See
+`docs/ROADMAP.md`.
 
 **Settled 2026-07-28, do not relitigate.** "Is the search or the evaluation the weak
 link?" — both get worked as opportunities appear. The gauntlet showed the engine reaching

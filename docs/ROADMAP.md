@@ -173,9 +173,23 @@ winning and then drew, from three separate causes -- see "Phase 7 conversion
 work" in `CHANGELOG.md`. Two items on this list changed status as a result:
 **SPSA is dropped** on this hardware (a 1,440-game test of the single
 best-attested tuning gain returned -9.41 +/- 12.37, and the published constants
-need tens of thousands of games to move a parameter), and **SMP is now the
-largest remaining item** -- at a 3500 target it buys testing throughput as well
-as strength, and testing throughput is the binding constraint.
+need tens of thousands of games to move a parameter), and **SMP is
+deprioritised**.
+
+**The SMP reasoning is worth writing down**, because it was briefly recorded
+here the other way round -- as "the largest remaining item", on the grounds that
+it buys testing throughput as well as strength. Both halves are wrong.
+
+**CCRL Blitz is a single-CPU list** -- i7-4770k, 2'+1", with a separate 4CPU
+list -- so multithreading contributes nothing to the stated target. And it does
+not speed up testing either: an SPRT runs `option.Threads=1` at concurrency 8,
+eight single-threaded games at once, and making the engine multithreaded changes
+none of that. Testing at Threads=2 and concurrency 4 would use the same cores
+for *fewer* games per hour.
+
+SMP is still worth building eventually -- tournaments, the 4CPU list, ordinary
+use -- but it is not on the path to 3500 and must not displace work that is.
+
 The rest of the modern search, now on top of an engine that is already ~2800:
 
 **Pre-loop:** internal iterative reduction → razoring → ProbCut → multicut (non-PV only).
