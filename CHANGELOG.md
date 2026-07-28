@@ -14,9 +14,9 @@ are sitting.
 
 | | |
 |---|---|
-| Phases complete | 1–6. **Phase 7 (search build-out) is next.** |
+| Phases complete | 1–6. **Phase 7 in progress** — singular extensions merged, +39.04 +/- 12.69. |
 | Strength | **3195 +/- 24 CCRL Blitz** (2026-07-28, 720 games, Zahak bracket) |
-| Bench, with a net | **4,063,328** |
+| Bench, with a net | **4,994,552** (was 4,063,328 at `base-phase6`) |
 | Bench, no net | **5,001,521** |
 | Current net | `nets/rogatia-p6.nnue`, `(768→256)x2→1`, 112M positions |
 | SPRT baseline | tag `base-phase6` |
@@ -226,6 +226,38 @@ OpenBench eligibility requirement, and NNUE inference is where it breaks.
 ---
 
 ## Changelog
+
+### Phase 7 — singular extensions (2026-07-28, laptop) — SPRT **+39.04 +/- 12.69**
+
+First Phase 7 patch. 1,296 games at 8+0.08, LOS 100.00%, LLR 2.95 on
+`[0.00, 5.00]`, zero illegal moves and zero time losses. Bench 4,063,328 →
+**4,994,552**. Merged as `1baaf7c`; reasoning lives in `954b25d` beneath it.
+
+Re-search the position at `(depth-1)/2` with the TT move excluded, against a
+window just under the TT score. If every alternative fails low the move is
+carrying the position alone, and it gets an extra ply.
+
+Four guards, each for a documented failure in another engine, all because the
+proof runs at the *same stack slot* as the node it proves: no TT cutoff, no
+razoring/RFP/null-move, **no TT store** (the one that crashed Berserk — the
+score describes a search that refused to look at the best move), and
+`moveCount == 0` returns alpha rather than a mate score. Plus one specific to
+this engine: `aborted()` returns `VALUE_DRAW`, which is below `singularBeta` in
+any winning position and would extend on nothing, so the proof is abort-checked.
+
+**Verification worth reusing:** at `SingularDepth=12` — above the bench depth,
+so the extension never fires — bench is 4,063,328, identical to `base-phase6`.
+That proves the plumbing is inert when the feature is off, separating the SPRT
+result from any bug in the scaffolding. Any future gated feature should ship
+with the same check.
+
+Cost is +28% time to depth 12. Normal; it buys play quality, not nodes. Ethereal
+measured +12.68 Elo from raising their threshold 8 → 10, so `SingularDepth` is
+the first SPSA candidate.
+
+**The harness fix paid for itself immediately.** This resolved in 71 minutes
+against an expected 6–15 hours, because `sprt.sh` now uses the sharp book: draw
+rate 40.1% where the balanced book gives ~47%, and fewer draws converge faster.
 
 ### Phase 6 — first NNUE (2026-07-28) → **3195 +/- 24**
 
