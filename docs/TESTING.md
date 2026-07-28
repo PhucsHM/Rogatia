@@ -41,7 +41,7 @@ only reproduces by checking the tag out and running `./rogatia-base bench 8`.
 ## Running an SPRT
 
 ```bash
-scripts/sprt.sh ./rogatia ./rogatia-base            # bounds [0, 10]
+scripts/sprt.sh ./rogatia ./rogatia-base            # bounds [0, 5], the current band
 scripts/sprt.sh ./rogatia ./rogatia-base -10 0      # non-regression
 CONCURRENCY=4 TC=20+0.2 scripts/sprt.sh ./a ./b     # verify a passing patch
 ```
@@ -63,8 +63,12 @@ A `[0, 10]` test at 3400 would accept noise; a `[0, 3]` test at 2200 would burn
 a day of games proving something a `[0, 10]` test settles in an hour.
 
 **Books:** `8moves_v3.epd` (balanced) under ~2800, `UHO_Lichess_4852_v1.epd`
-(biased, fewer draws, faster convergence) above it. `lib.sh` defaults to
-`8moves_v3.epd`.
+(biased, fewer draws, faster convergence) above it. The two harnesses now pick
+different defaults on purpose: **`sprt.sh` uses the sharp book**, because past
+~2800 a balanced one draws too often to resolve a small patch, while
+**`gauntlet.sh` stays on the balanced book**, because a rating is only
+meaningful against the runs it is compared with and the current 3195 figure was
+measured there. `BOOK=` overrides either. Both names live in `lib.sh`.
 
 **Concurrency 8, not 16 or 20.** Physical cores only. SMT siblings distort
 timing at 8+0.08 and produce spurious losses on time, which look exactly like a

@@ -14,6 +14,12 @@ set -eu
 GAMES=${1:-400}
 ENGINE=$(bin "${2:-$ROOT/rogatia-base}")
 
+# Balanced openings, deliberately, and not the sharp book the SPRT script uses.
+# A rating is only meaningful against the runs it is compared with, and the
+# current 3195 figure was measured on this book.  Changing it here silently
+# makes the next number incomparable with the last one.
+BOOK=${BOOK:-$BOOK_BALANCED}
+
 # name : CCRL Blitz (40/4) rating : that rating's own error bar.
 # 1-CPU 64-bit entries, list read 2026-07-28 from
 # https://computerchess.org.uk/404/rating_list_all.html
