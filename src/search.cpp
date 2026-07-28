@@ -19,6 +19,7 @@
 #include "movegen.h"
 #include "nnue.h"
 #include "perft.h"  // move_to_uci
+#include "tbprobe.h"
 #include "tt.h"
 #include "tunable.h"
 
@@ -118,6 +119,7 @@ std::atomic<bool> Stopped{false};
 
 struct Worker {
     std::uint64_t nodes    = 0;
+    std::uint64_t tbHits   = 0;
     int           seldepth = 0;
 
     Move  rootBestMove = MOVE_NONE;
@@ -162,6 +164,82 @@ Worker W;
 // network it falls back to the piece-square tables.
 Score eval_at(const Position& pos, const Stack* ss) {
     return nnue::loaded() ? nnue::evaluate(pos, ss->acc) : evaluate(pos);
+}
+
+// ---------------------------------------------------------------- syzygy ---
+// TB_LARGEST is zero until tb_init() succeeds, so an engine that was never
+// given a SyzygyPath -- which includes every bench run -- never probes and its
+// node count is unchanged.  That is what keeps `bench` comparable across
+// machines, and it is the reason nothing here is behind a compile-time flag.
+
+bool tb_in_range(const Position& pos) {
+    return TB_LARGEST > 0 && unsigned(popcount(pos.pieces())) <= TB_LARGEST;
+}
+
+// Side-to-move relative WDL, or TB_RESULT_FAILED.  A cursed win and a blessed
+// loss are draws under the fifty-move rule, which is the rule the game is
+// actually played under, so both collapse to a draw here.
+unsigned probe_wdl(const Position& pos) {
+    // Fathom cannot handle castling rights, and its WDL tables assume the
+    // fifty-move counter is zero -- DTZ is what accounts for a running counter,
+    // and that is a root-only probe.
+    if (pos.castling_rights() != NO_CASTLING || pos.rule50_count() != 0)
+        return TB_RESULT_FAILED;
+
+    return tb_probe_wdl(
+        pos.pieces(WHITE), pos.pieces(BLACK), pos.pieces(KING), pos.pieces(QUEEN),
+        pos.pieces(ROOK), pos.pieces(BISHOP), pos.pieces(KNIGHT), pos.pieces(PAWN),
+        0, 0, pos.ep_square() == SQ_NONE ? 0u : unsigned(pos.ep_square()),
+        pos.side_to_move() == WHITE);
+}
+
+// The DTZ-optimal move in a WON table position, or MOVE_NONE.
+//
+// Only wins are taken from the table.  Fathom's own documentation warns that
+// DTZ suggests unnatural moves in lost positions, where a real search sets
+// better practical problems; and in drawn ones the WDL probe inside the search
+// already keeps the engine out of trouble.  Winning is the case that needs it,
+// because WDL alone reports every winning move as equally winning and gives the
+// engine no reason to make progress -- which is how a won position reaches the
+// fifty-move rule.  DTZ is a distance to *zeroing*, so following it resets the
+// counter by construction.
+Move probe_root(const Position& pos) {
+    if (!tb_in_range(pos) || pos.castling_rights() != NO_CASTLING)
+        return MOVE_NONE;
+
+    const unsigned res = tb_probe_root(
+        pos.pieces(WHITE), pos.pieces(BLACK), pos.pieces(KING), pos.pieces(QUEEN),
+        pos.pieces(ROOK), pos.pieces(BISHOP), pos.pieces(KNIGHT), pos.pieces(PAWN),
+        unsigned(pos.rule50_count()), 0,
+        pos.ep_square() == SQ_NONE ? 0u : unsigned(pos.ep_square()),
+        pos.side_to_move() == WHITE, nullptr);
+
+    if (res == TB_RESULT_FAILED || res == TB_RESULT_CHECKMATE
+        || res == TB_RESULT_STALEMATE || TB_GET_WDL(res) != TB_WIN)
+        return MOVE_NONE;
+
+    // Match Fathom's suggestion against our own legal moves rather than
+    // decoding its move encoding: a from/to/promotion triple is unambiguous,
+    // and anything that fails to match is dropped instead of played.
+    static constexpr PieceType PromoOf[] = {NO_PIECE_TYPE, QUEEN, ROOK, BISHOP, KNIGHT};
+    const unsigned from = TB_GET_FROM(res), to = TB_GET_TO(res);
+    const unsigned promo = TB_GET_PROMOTES(res);
+
+    Move  moves[MAX_MOVES];
+    Move* end = generate<ALL>(pos, moves);
+
+    for (Move* m = moves; m != end; ++m) {
+        if (unsigned(from_sq(*m)) != from || unsigned(to_sq(*m)) != to)
+            continue;
+        if (promo != TB_PROMOTES_NONE
+            && (type_of(*m) != PROMOTION || promotion_type(*m) != PromoOf[promo]))
+            continue;
+        if (promo == TB_PROMOTES_NONE && type_of(*m) == PROMOTION)
+            continue;
+        if (pos.is_legal(*m))
+            return *m;
+    }
+    return MOVE_NONE;
 }
 
 template<typename T>
@@ -556,6 +634,34 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             || (tt.bound == BOUND_UPPER && tt.score <= alpha)))
         return tt.score;
 
+    // Syzygy.  A table hit is exact knowledge, so it outranks anything the
+    // evaluation below could say about the position.  Not inside a singular
+    // proof: that search deliberately asks a different question, and its key
+    // does not describe this position.
+    if (!rootNode && !excluded && tb_in_range(pos)) {
+        const unsigned wdl = probe_wdl(pos);
+        if (wdl != TB_RESULT_FAILED) {
+            ++W.tbHits;
+
+            const Score value = wdl == TB_WIN  ? tb_win_in(ss->ply)
+                              : wdl == TB_LOSS ? tb_loss_in(ss->ply)
+                                               : VALUE_DRAW;
+            const Bound bound = wdl == TB_WIN  ? BOUND_LOWER
+                              : wdl == TB_LOSS ? BOUND_UPPER
+                                               : BOUND_EXACT;
+
+            // A win is a lower bound and a loss an upper one: WDL knows the
+            // result but not the distance, so claiming an exact score would
+            // overwrite a real mate the search could still find.
+            if (bound == BOUND_EXACT || (bound == BOUND_LOWER && value >= beta)
+                || (bound == BOUND_UPPER && value <= alpha)) {
+                TT.store(pos.key(), ss->ply, std::min(depth + 6, MAX_PLY - 1), bound,
+                         MOVE_NONE, value, VALUE_NONE, PvNode);
+                return value;
+            }
+        }
+    }
+
     const bool  inCheck = pos.in_check();
     const Color us      = pos.side_to_move();
 
@@ -926,9 +1032,9 @@ void print_info(int depth, Score score) {
         std::printf("score cp %d ", score);
     }
 
-    std::printf("nodes %llu nps %llu hashfull %d time %lld pv %s\n",
+    std::printf("nodes %llu nps %llu hashfull %d tbhits %llu time %lld pv %s\n",
                 (unsigned long long) W.nodes, (unsigned long long) nps, TT.hashfull(),
-                (long long) ms, pv_string().c_str());
+                (unsigned long long) W.tbHits, (long long) ms, pv_string().c_str());
     std::fflush(stdout);
 }
 
@@ -1069,6 +1175,7 @@ void go(Position& pos, const Limits& limits) {
     Stopped.store(false, std::memory_order_relaxed);
 
     W.nodes    = 0;
+    W.tbHits   = 0;
     W.seldepth = 0;
     W.quiet    = false;
     W.start    = Clock::now();
@@ -1079,8 +1186,21 @@ void go(Position& pos, const Limits& limits) {
     set_up_time(limits, pos.side_to_move());
     TT.new_search();
 
+    // A won table position is solved.  Searching it cannot improve on the
+    // DTZ-optimal move and can lose the win outright, because every move the
+    // search compares looks equally winning to a WDL probe and none of them is
+    // pressed to make progress.  Play the table's move and keep the clock.
+    const Move tbMove = probe_root(pos);
     const int maxDepth = limits.depth ? std::min(limits.depth, MAX_PLY - 2) : MAX_PLY - 2;
-    if (W.rootBestMove != MOVE_NONE)
+
+    if (tbMove != MOVE_NONE) {
+        W.rootBestMove = tbMove;
+        W.tbHits       = 1;
+        std::printf("info depth %d score cp %d nodes 0 tbhits 1 time %lld pv %s\n",
+                    maxDepth, int(VALUE_TB), (long long) W.elapsed(),
+                    move_to_uci(tbMove).c_str());
+        std::fflush(stdout);
+    } else if (W.rootBestMove != MOVE_NONE)
         iterative_deepening(pos, maxDepth);
 
     std::printf("bestmove %s\n",

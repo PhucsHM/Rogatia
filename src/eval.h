@@ -25,6 +25,22 @@ constexpr bool is_mate_score(Score s) {
     return s >= VALUE_MATE_IN_MAX_PLY || s <= -VALUE_MATE_IN_MAX_PLY;
 }
 
+// Tablebase scores sit in the band just below mate scores.  A table hit is
+// certain, so it must outrank every positional score; but a mate the search
+// actually found is shorter and more useful, so it must outrank the table.
+// Deliberately below VALUE_MATE_IN_MAX_PLY, which keeps is_mate_score() false
+// for them -- a WDL probe knows the result, not the distance, so reporting
+// "mate in N" off one would be inventing a number.
+constexpr Score VALUE_TB                = VALUE_MATE_IN_MAX_PLY - 1;
+constexpr Score VALUE_TB_WIN_IN_MAX_PLY = VALUE_TB - MAX_PLY;
+
+constexpr Score tb_win_in(int ply)  { return VALUE_TB - ply; }
+constexpr Score tb_loss_in(int ply) { return -VALUE_TB + ply; }
+
+constexpr bool is_tb_score(Score s) {
+    return s >= VALUE_TB_WIN_IN_MAX_PLY || s <= -VALUE_TB_WIN_IN_MAX_PLY;
+}
+
 // Rough material values, used by SEE and move ordering.  Deliberately round
 // numbers rather than the tapered ones below: SEE wants a stable ranking, not
 // an accurate score.
