@@ -163,22 +163,29 @@ is what SPRT is for.
 ## Running tests unattended
 
 A verdict takes hours and there is one machine, so tests run back to back rather
-than in parallel. `scripts/testqueue.ps1` does that without supervision:
+than in parallel. `scripts/testqueue.sh` does that without supervision:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/queue-start.ps1
+```bash
+nohup bash scripts/testqueue.sh > sprt-results/queue-runner.log 2>&1 &
 ```
 
-It launches detached, so it survives the terminal closing or an agent session
-ending. Progress goes to `sprt-results/queue-summary.log`; stop it with
-`Stop-Process -Id <pid>`.
+`nohup` detaches it, so it survives the terminal closing or an agent session
+ending. Progress goes to `sprt-results/queue-summary.log`.
+
+**It is bash and not PowerShell for a measured reason.** Launching fastchess
+through PowerShell's `Start-Process -RedirectStandardOutput` makes every engine
+fail startup -- `Engine didn't respond to uciok after startup`, fatal, seconds
+in -- because that redirection disturbs the handles fastchess passes to its own
+child processes. The identical command with a plain shell redirect runs clean.
+Measured back to back on the same binaries: Start-Process gave 0 games and a
+fatal, the shell redirect gave 12 games and no error.
 
 What it does and does not do:
 
 - **Waits for a free machine.** It never starts a second match beside a running
   one -- two matches on one box distort each other's timing and both results
   become worthless.
-- **Resumes.** Finished tests are recorded in `sprt-results/queue-state.json`,
+- **Resumes.** Finished tests are recorded in `sprt-results/queue-state`,
   so a reboot picks up where it left off instead of repeating four hours.
 - **Flags suspends.** A wall-clock jump over 150 seconds is logged. Sleeping the
   machine makes every engine clock leap at once and the games in flight lose on
@@ -189,7 +196,7 @@ What it does and does not do:
   binary is built and gated *before* it joins the queue; a missing one is logged
   and skipped, never guessed at.
 
-Edit the `$Queue` array to add tests. Order matters -- put the patch that might
+Edit the `QUEUE` array to add tests. Order matters -- put the patch that might
 *lose* first, so a negative result arrives before a free win has been banked.
 
 **On sleep.** Idle sleep is disabled on this laptop so an open-lid test runs as
