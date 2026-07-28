@@ -359,7 +359,8 @@ fully independent anchors. Add a second family before treating 3195 as settled.
   futility, IIR, history pruning in a second merged set.
 - **SPRT +651 +/- 156** vs `base-phase3`, then **+14.6 +/- 10.1** for the
   second set.
-- 31 search constants exposed as UCI spin options in `src/tunable.h`.
+- 31 search constants exposed as UCI spin options in `src/tunable.h` (33 as of
+  singular extensions; the count moves, so grep `^    X(` rather than trusting it).
   **None have been SPSA-tuned yet** — they are hand-picked values.
 - Bench depth raised 8 → 12 at `655f93c`.
 
