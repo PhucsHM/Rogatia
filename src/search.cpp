@@ -1068,6 +1068,11 @@ void stop() { Stopped.store(true, std::memory_order_relaxed); }
 void go(Position& pos, const Limits& limits) {
     Stopped.store(false, std::memory_order_relaxed);
 
+    // Everything already on the history stack was really played; what the
+    // search pushes from here is speculation.  is_draw_for_search() needs
+    // the boundary to apply the repetition rule correctly on each side.
+    pos.set_root();
+
     W.nodes    = 0;
     W.seldepth = 0;
     W.quiet    = false;
@@ -1092,6 +1097,11 @@ void go(Position& pos, const Limits& limits) {
 
 Result search_fixed_nodes(Position& pos, std::uint64_t nodes) {
     Stopped.store(false, std::memory_order_relaxed);
+
+    // Everything already on the history stack was really played; what the
+    // search pushes from here is speculation.  is_draw_for_search() needs
+    // the boundary to apply the repetition rule correctly on each side.
+    pos.set_root();
 
     W.nodes     = 0;
     W.seldepth  = 0;
@@ -1124,6 +1134,11 @@ Result search_fixed_nodes(Position& pos, std::uint64_t nodes) {
 Score qsearch_eval(Position& pos) {
     Stopped.store(false, std::memory_order_relaxed);
 
+    // Everything already on the history stack was really played; what the
+    // search pushes from here is speculation.  is_draw_for_search() needs
+    // the boundary to apply the repetition rule correctly on each side.
+    pos.set_root();
+
     W.nodes     = 0;
     W.quiet     = true;
     W.useTime   = false;
@@ -1143,6 +1158,11 @@ Score qsearch_eval(Position& pos) {
 
 Result search_fixed_depth(Position& pos, int depth) {
     Stopped.store(false, std::memory_order_relaxed);
+
+    // Everything already on the history stack was really played; what the
+    // search pushes from here is speculation.  is_draw_for_search() needs
+    // the boundary to apply the repetition rule correctly on each side.
+    pos.set_root();
 
     W.nodes     = 0;
     W.seldepth  = 0;

@@ -122,6 +122,12 @@ public:
     void make_null_move();
     void unmake_null_move();
 
+    // Marks where the real game ends and the search begins.  Everything already
+    // on the history stack is what was actually played; everything pushed after
+    // this call is the search's own speculation, and the two mean different
+    // things to the repetition rule.  Call it once per search, at the root.
+    void set_root() { rootPly_ = int(history_.size()); }
+
     // -------------------------------------------------------------- debug --
     std::string to_string() const;
     bool        pos_is_ok() const;
@@ -152,6 +158,13 @@ private:
 
     BoardState              st_;
     std::vector<BoardState> history_;
+
+    // Index into history_ where the current search started.  Zero -- the value
+    // after clear(), and the value if nobody calls set_root() -- makes every
+    // entry look like the search's own, which is exactly the behaviour this
+    // engine had before the distinction existed.  A forgotten call is therefore
+    // a silent no-op rather than a wrong answer.
+    int rootPly_ = 0;
 };
 
 // Initialises bitboard geometry, attack tables and Zobrist keys.

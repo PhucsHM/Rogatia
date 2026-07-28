@@ -45,6 +45,7 @@ void Position::clear() {
     st_         = BoardState{};
     history_.clear();
     history_.reserve(MAX_PLY + 64);
+    rootPly_ = 0;
 }
 
 bool Position::set(const std::string& fen) {
@@ -519,10 +520,31 @@ bool Position::is_draw_for_search() const {
     if (st_.rule50 >= 100)
         return true;
 
-    // One repetition, not two.  Inside the search a position already seen is
-    // one the opponent can force back to, so scoring it as a draw is sound and
-    // prunes far more than waiting for the third occurrence.
-    return repetitions(1) >= 1;
+    // Where the repetition happened decides how many of them a draw takes.
+    //
+    // Inside the search, one is enough: a position the side to move can reach
+    // again is one the opponent can usually force back to, so neither side can
+    // claim more than a draw, and scoring it zero prunes whole subtrees.
+    //
+    // Before the search started it means something entirely different.  The
+    // game has been here once, and the rules of chess need THREE occurrences.
+    // Treating that as a draw makes the engine refuse every winning line that
+    // runs back through a position the game already visited -- which in an
+    // endgame it does constantly, because there are few pieces and they keep
+    // revisiting squares.  Conflating the two is why a won ending gets offered
+    // a repetition the engine believes it cannot avoid.
+    const int base = int(history_.size());
+    const int end  = std::min(std::min(st_.rule50, st_.pliesFromNull), base);
+    int       seen = 0;
+
+    for (int i = 4; i <= end; i += 2) {
+        const int idx = base - i;
+        if (history_[idx].key != st_.key)
+            continue;
+        if (idx >= rootPly_ || ++seen >= 2)
+            return true;
+    }
+    return false;
 }
 
 bool Position::is_game_draw() const {
