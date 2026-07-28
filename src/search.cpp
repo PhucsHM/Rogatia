@@ -42,6 +42,20 @@ constexpr int MAX_HISTORY = 16384;
 
 constexpr int MAX_QUIETS_TRACKED = 32;
 
+// ---------------------------------------------- correction history ---------
+
+// The search routinely disagrees with the static evaluation, and the
+// disagreement is not random -- it correlates with structural features the
+// evaluation is systematically weak on.  Record the running difference keyed on
+// those features and apply it the next time the same structure appears.
+//
+// This only became worth doing once NNUE existed.  Against the piece-square
+// tables the residual was large and unstructured, and the table would have
+// learned noise; against a network it is small and has shape.
+constexpr int CORRHIST_SIZE  = 16384;                 // power of two, masked
+constexpr int CORRHIST_GRAIN = 256;                   // table units per centipawn
+constexpr int CORRHIST_MAX   = CORRHIST_GRAIN * 32;   // +/- 32 cp of authority
+
 // ------------------------------------------------------------------- LMR ---
 
 // Reductions are carried in 1/1024 of a ply so that the adjustments below can
@@ -115,6 +129,12 @@ struct Worker {
     // lands].  4 MB, so it lives in the Worker rather than on the stack.
     std::int16_t contHist[PIECE_NB][SQUARE_NB][PIECE_NB][SQUARE_NB] = {};
 
+    // [side to move][feature hash].  Pawn structure and own non-pawn material
+    // are the two things the evaluation is most often wrong about in a
+    // consistent direction.  The five Zobrist key sets exist for this.
+    int pawnCorr[COLOR_NB][CORRHIST_SIZE]    = {};
+    int nonPawnCorr[COLOR_NB][CORRHIST_SIZE] = {};
+
     Move pv[MAX_PLY][MAX_PLY] = {};
     int  pvLen[MAX_PLY]       = {};
 
@@ -170,6 +190,42 @@ void update_cont_hist(const Stack* ss, Piece pc, Square to, int bonus) {
     for (int off : {1, 2})
         if (std::int16_t* slot = cont_hist(ss - off, pc, to))
             update_history(*slot, bonus);
+}
+
+// ------------------------------------------------- correction history ------
+
+std::size_t corr_index(Key k) { return std::size_t(k) & (CORRHIST_SIZE - 1); }
+
+// Centipawns to add to the raw evaluation of this position.
+Score correction(const Position& pos) {
+    const Color us = pos.side_to_move();
+    const int   c  = W.pawnCorr[us][corr_index(pos.pawn_key())]
+                 + W.nonPawnCorr[us][corr_index(pos.non_pawn_key(us))];
+    return Score(c / CORRHIST_GRAIN);
+}
+
+// Clamped clear of the mate range: every pruning decision above treats a mate
+// score as proven, and a correction is a guess.
+Score corrected_eval(Score raw, const Position& pos) {
+    if (raw == VALUE_NONE)
+        return VALUE_NONE;
+    return std::clamp(Score(raw + correction(pos)), Score(-VALUE_MATE_IN_MAX_PLY + 1),
+                      Score(VALUE_MATE_IN_MAX_PLY - 1));
+}
+
+void update_corr(int& slot, int diff, int depth) {
+    // Exponential moving average weighted by depth: a deep search's verdict
+    // should move the estimate further than a shallow one's.
+    const int weight = std::min(depth + 1, 16);
+    const int target = std::clamp(diff * CORRHIST_GRAIN, -CORRHIST_MAX, CORRHIST_MAX);
+    slot = std::clamp((slot * (256 - weight) + target * weight) / 256, -CORRHIST_MAX,
+                      CORRHIST_MAX);
+}
+
+void update_correction(const Position& pos, int depth, int diff) {
+    const Color us = pos.side_to_move();
+    update_corr(W.pawnCorr[us][corr_index(pos.pawn_key())], diff, depth);
+    update_corr(W.nonPawnCorr[us][corr_index(pos.non_pawn_key(us))], diff, depth);
 }
 
 // -------------------------------------------------------------------- SEE --
@@ -348,16 +404,18 @@ Score qsearch(Position& pos, Stack* ss, Score alpha, Score beta) {
     const bool inCheck = pos.in_check();
     Score      best    = -VALUE_INFINITE;
     Score      staticEval = VALUE_NONE;
+    Score      rawEval    = VALUE_NONE;  // uncorrected; only this goes in the table
 
     if (!inCheck) {
-        staticEval = (ttHit && tt.eval != VALUE_NONE) ? tt.eval : eval_at(pos, ss);
+        rawEval        = (ttHit && tt.eval != VALUE_NONE) ? tt.eval : eval_at(pos, ss);
+        staticEval     = corrected_eval(rawEval, pos);
         ss->staticEval = staticEval;
 
         // Stand pat: nobody is forced to capture, so the quiet score is a
         // floor on what this node is worth.
         best = staticEval;
         if (best >= beta) {
-            TT.store(pos.key(), ss->ply, 0, BOUND_LOWER, MOVE_NONE, best, staticEval, PvNode);
+            TT.store(pos.key(), ss->ply, 0, BOUND_LOWER, MOVE_NONE, best, rawEval, PvNode);
             return best;
         }
         if (best > alpha)
@@ -446,7 +504,7 @@ Score qsearch(Position& pos, Stack* ss, Score alpha, Score beta) {
         return mated_in(ss->ply);
 
     const Bound bound = (best >= beta) ? BOUND_LOWER : BOUND_UPPER;
-    TT.store(pos.key(), ss->ply, 0, bound, bestMove, best, staticEval, PvNode);
+    TT.store(pos.key(), ss->ply, 0, bound, bestMove, best, rawEval, PvNode);
     return best;
 }
 
@@ -501,10 +559,17 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     const bool  inCheck = pos.in_check();
     const Color us      = pos.side_to_move();
 
-    const Score staticEval = inCheck ? VALUE_NONE
-                           : (ttHit && tt.eval != VALUE_NONE) ? tt.eval
-                                                              : eval_at(pos, ss);
-    ss->staticEval = staticEval;
+    // Two values, deliberately.  rawEval is what the evaluation actually said;
+    // staticEval is that plus the correction, and it is what every pruning
+    // decision below reads.  They must not be conflated: tt.eval caches the RAW
+    // value and the next probe reads it straight back, so storing a corrected
+    // number there would feed each correction into the input of the next one and
+    // compound it on every visit to the position.
+    const Score rawEval = inCheck ? VALUE_NONE
+                        : (ttHit && tt.eval != VALUE_NONE) ? tt.eval
+                                                           : eval_at(pos, ss);
+    const Score staticEval = corrected_eval(rawEval, pos);
+    ss->staticEval         = staticEval;
 
     // A TT move from a different position must be re-validated from scratch --
     // key16 collides once every 65536 entries and playing a move that is not
@@ -816,8 +881,21 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     // Never from inside a proof.  This search deliberately refused to look at
     // the position's best move, so its score does not describe the position --
     // storing it under the real key poisons the entry for every later probe.
+    // Teach the correction table where the search disagreed with the evaluation,
+    // but only where the disagreement is real.  A fail-low bound cannot claim
+    // the position is better than the eval said, a fail-high cannot claim it is
+    // worse, and a swing driven by a capture is tactics rather than a structural
+    // miss.  Never from inside a singular proof: that score describes a search
+    // that refused to look at the best move.
+    if (!excluded && !inCheck && rawEval != VALUE_NONE
+        && !(bestMove != MOVE_NONE && pos.is_capture(bestMove))
+        && (bound == BOUND_EXACT || (bound == BOUND_LOWER && best > staticEval)
+            || (bound == BOUND_UPPER && best < staticEval)))
+        update_correction(pos, depth, best - staticEval);
+
+    // rawEval, not staticEval -- see the note where the two are computed.
     if (!excluded)
-        TT.store(pos.key(), ss->ply, depth, bound, bestMove, best, staticEval, PvNode);
+        TT.store(pos.key(), ss->ply, depth, bound, bestMove, best, rawEval, PvNode);
 
     return best;
 }
@@ -979,6 +1057,8 @@ void clear() {
     TT.clear();
     std::memset(W.history, 0, sizeof(W.history));
     std::memset(W.contHist, 0, sizeof(W.contHist));
+    std::memset(W.pawnCorr, 0, sizeof(W.pawnCorr));
+    std::memset(W.nonPawnCorr, 0, sizeof(W.nonPawnCorr));
     W.rootBestMove = MOVE_NONE;
     W.rootScore    = VALUE_NONE;
 }
