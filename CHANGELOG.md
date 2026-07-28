@@ -14,9 +14,9 @@ are sitting.
 
 | | |
 |---|---|
-| Phases complete | 1–6. **Phase 7 in progress** — singular extensions merged, +39.04 +/- 12.69. |
+| Phases complete | 1–6. **Phase 7 in progress** — singular extensions (+39.04 +/- 12.69) and correction history (+33.13 +/- 11.60) merged. |
 | Strength | **~3175 CCRL Blitz** — see "What the rating actually says" below. The gauntlet arithmetic returns 3195 +/- 24; three separate caveats all push it down, none up. |
-| Bench, with a net | **4,994,552** (was 4,063,328 at `base-phase6`) |
+| Bench, with a net | **4,772,409** (4,063,328 at `base-phase6`) |
 | Bench, no net | **6,991,803** |
 | Current net | `nets/rogatia-p6.nnue`, `(768→256)x2→1`, 112M positions |
 | SPRT baseline | tag `base-phase6` |
@@ -280,6 +280,41 @@ OpenBench eligibility requirement, and NNUE inference is where it breaks.
 ---
 
 ## Changelog
+
+### Phase 7 — correction history (2026-07-28, laptop) — SPRT **+33.13 +/- 11.60**
+
+1,504 games at 8+0.08, LOS 100.00%, LLR 2.95 on `[0.00, 5.00]`, zero illegal
+moves and zero time losses. Bench 4,994,552 → **4,772,409** — a 4.5% *smaller*
+tree, because a more accurate static evaluation prunes better.
+
+Records the running gap between what the search concluded and what the
+evaluation guessed, keyed on the pawn key and on own non-pawn material, and
+applies it as a correction next time that structure appears. This is what the
+five Zobrist key sets have been carried for since Phase 1; until now they cost
+make/unmake time and had zero readers.
+
+**Guarded against compounding.** `tt.eval` caches the RAW evaluation and the
+next probe reads it straight back, so a corrected value stored there becomes the
+input to the next correction and grows on every visit. `rawEval` and
+`staticEval` are separate throughout; all three `TT.store` sites carry `rawEval`.
+
+**Verified inert before testing:** with the clamp forced to zero, bench returns
+to 4,994,552 exactly — the plumbing adds no behaviour of its own, so the whole
+4.5% is the corrections working.
+
+**Verified before spending the test:** all five Zobrist key sets checked against
+a from-scratch rebuild across 195,943 positions, zero mismatches. Nothing had
+ever verified them and this feature keys on two.
+
+**OPEN QUESTION — do not bank this number.** +33 is 5–6× the published figures;
+Berserk measured +2.70 and +2.44 for these same two flavours at this same time
+control. The estimate converged rather than decayed (44 → 30 → 27 → 32 → 33,
+error bar ±38 → ±12), so it is not early luck. The plausible explanation is that
+a 256-neuron net on 112M positions leaves a larger, more structured residual
+than the stronger evaluations those numbers were measured against — which would
+make the technique worth *more* here. Coherent, unverified. **If that is the
+reason, the gain should shrink when the retrained net lands. Re-measure then
+rather than assuming it persists.**
 
 ### Phase 7 — singular extensions (2026-07-28, laptop) — SPRT **+39.04 +/- 12.69**
 
