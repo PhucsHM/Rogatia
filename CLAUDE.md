@@ -101,12 +101,29 @@ numbers against a base missing the others would not have summed to this anyway.
 17% more nodes alone and the flag is sticky, so it accumulates through the table
 and weakens LMR everywhere. Worth its own test, not a bundle seat.
 
-**Pending, unverified:** staged move generation on branch `staged-movepick` —
-search the TT move before generating anything. Contrary to first appearances it
-is **not** bench-neutral: scoring now runs after the TT move's subtree, which
-writes the very history tables `score_move` reads, so the remaining quiets
-reorder. Branch `staged-scaffold` exists to separate a loop bug from that
-effect — it keeps eager generation and must bench exactly 5,001,521.
+**Tried and rejected 2026-07-28: deferring generation behind the TT move.**
+Search the TT move first and only run `generate<ALL>` plus its scoring pass if
+it fails to cut. Measured on an idle laptop, medians of 9:
+
+| | nodes | nps | time to depth 12 |
+|---|---|---|---|
+| main | 5,001,521 | 2,928,290 | 1,708 ms |
+| deferred | 5,945,862 | 2,946,413 | 2,018 ms |
+
+The premise fails. The nps gain is +0.6%, inside the 5–7% noise floor, while the
+tree grows 18.9% — **18% slower to the same depth**. Cause is isolated and
+certain: a scaffold running the identical two-stage loop with generation still
+eager benched 5,001,521 *to the node*, so the restructuring is order-exact. The
+whole regression is that scoring now happens after the TT move's subtree has
+written the history tables `score_move` reads. A larger tree at equal depth is
+worse ordering, so fresher statistics hurt here.
+
+**Do not retry this narrow form.** It does not refute the published staged-picker
+numbers (Viridithas +6.87, MadChess +39 at ~2210) — those are a full categorical
+picker (TT → good captures → killers → quiets) that skips generating quiets
+entirely on a cutoff, saving far more than one deferred scoring pass. That
+remains open, carries the same ordering coupling, and needs the same
+eager-generation scaffold as its correctness check.
 
 Also worth knowing before the next datagen run: the node budget has a
 **granularity and floor of 1024** (`check_stop` only tests the limit when
