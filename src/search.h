@@ -24,8 +24,14 @@ struct Limits {
     int           moveOverhead   = 10;
 };
 
-// Forget everything learned about the previous game: TT, killers, history.
+// Full wipe: TT, history, correction tables.  bench depends on this making each
+// position independent, so it must stay a wipe rather than become an ageing.
 void clear();
+
+// What `ucinewgame` calls.  Clears the TT but only HALVES the history tables --
+// ordering knowledge is mostly not game-specific, and wiping it makes the first
+// moves of every game search blind.
+void new_game();
 
 // Runs iterative deepening to completion, printing `info` lines as it goes and
 // a single `bestmove` at the end.  Blocking -- UCI runs it on its own thread.
