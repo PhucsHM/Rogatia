@@ -99,10 +99,39 @@ for entry in "${QUEUE[@]}"; do
     # Snapshot it under this test's name while the match runs; only one match
     # runs at a time, so the file always belongs to the current test.
     resume=$OUT/$name.config.json
-    snapshot_config() {
-        while kill -0 "$1" 2>/dev/null; do
+
+    # Snapshot the resume state, and abandon a test that will never finish.
+    #
+    # An SPRT concludes when the LLR reaches +-2.94.  It does that quickly when
+    # the true effect is outside the bounds and never when it sits between them:
+    # the repetition patch reached 3,260 games at LLR 0.08, which projects to
+    # roughly 120,000 games -- 135 hours of the only test machine -- for a
+    # number already known to be about +2.  Past STALL_GAMES with the LLR still
+    # inside +-STALL_LLR, the answer is "too small to resolve at these bounds",
+    # and that answer is already in hand.  Stop and keep the machine.
+    #
+    # Deliberately NOT an early abort on a losing result: SPRT rejects a real
+    # loss fast on its own, and second-guessing it would throw away verdicts
+    # that were about to arrive.
+    STALL_GAMES=4000
+    STALL_LLR=0.6
+    monitor() {
+        local pid=$1 lf=$2       # not `log`: that is the function name
+        while kill -0 "$pid" 2>/dev/null; do
             [ -f config.json ] && cp -f config.json "$resume" 2>/dev/null
             sleep 60
+            local g llr
+            g=$(grep -E '^Games:' "$lf" 2>/dev/null | tail -1 | grep -oE '[0-9]+' | head -1)
+            llr=$(grep -E '^LLR:' "$lf" 2>/dev/null | tail -1 | awk '{print $2}')
+            if [ -z "$g" ] || [ -z "$llr" ]; then continue; fi
+            if [ "$g" -ge "$STALL_GAMES" ] \
+               && awk -v l="$llr" -v t="$STALL_LLR" 'BEGIN{exit !(l<t && l>-t)}'; then
+                log "$name : STALLED -- $g games, LLR $llr still inside +-$STALL_LLR."
+                log "$name :   Effect is too small to resolve at these bounds; stopping."
+                cp -f config.json "$OUT/$name-STALLED-$g.config.json" 2>/dev/null
+                kill "$pid" 2>/dev/null
+                return
+            fi
         done
     }
 
@@ -128,10 +157,10 @@ for entry in "${QUEUE[@]}"; do
                 -pgnout file="$OUT/$name.pgn" > "$OUT/$name.log" 2>&1 &
         fi
         fc_pid=$!
-        snapshot_config "$fc_pid" &
-        snap_pid=$!
+        monitor "$fc_pid" "$OUT/$name.log" &
+        mon_pid=$!
         wait "$fc_pid"
-        kill "$snap_pid" 2>/dev/null
+        kill "$mon_pid" 2>/dev/null
 
         started=$(grep -c 'Started game' "$OUT/$name.log" 2>/dev/null || echo 0)
         [ "$started" -gt 8 ] && break
