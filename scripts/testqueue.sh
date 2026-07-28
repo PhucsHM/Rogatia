@@ -53,6 +53,7 @@ QUEUE=(
   "checkext|rogatia-chkext|rogatia-base|0|5|"
   "corrplexity|rogatia-cplx|rogatia-base|0|5|"
   "capthist|rogatia-capt|rogatia-base|0|5|"
+  "rule50b|rogatia-r50b|rogatia-base|0|5|"
 )
 
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$SUMMARY"; }
