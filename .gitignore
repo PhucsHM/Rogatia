@@ -43,3 +43,6 @@ rogatia-phase4
 
 # Trained networks live here; they are release assets, not repo content.
 nets/
+
+# SPSA tuner output
+spsa-results/
