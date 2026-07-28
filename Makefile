@@ -49,6 +49,20 @@ ifneq ($(EVALFILE),none)
 	CXXFLAGS += -DEVALFILE='"$(EVALFILE)"'
 endif
 
+# EVALFILE is a compile flag, not a source file, so make cannot see it change:
+# `make EVALFILE=b` after `make EVALFILE=a` rebuilds nothing and silently keeps
+# net a.  That is invisible and it ruins exactly the comparison this project
+# runs most -- a new net SPRT'd against the old one on identical code, where
+# both binaries end up carrying the same net and the result reads 0 Elo.
+#
+# Record the value in a stamp file and make every object depend on it.  The
+# stamp is only rewritten when the value actually changes, so this costs one
+# rebuild per net switch and nothing otherwise.
+EVALSTAMP := $(BUILDDIR)/.evalfile
+$(shell mkdir -p $(BUILDDIR) 2>/dev/null; \
+        [ "$$(cat $(EVALSTAMP) 2>/dev/null)" = "$(EVALFILE)" ] \
+        || printf '%s' "$(EVALFILE)" > $(EVALSTAMP))
+
 # -march=native is right for dev and for the 7700; release uses a portable
 # baseline so the binary runs on other people's machines.
 ifeq ($(build),)
@@ -79,7 +93,7 @@ release:
 $(EXE): $(OBJECTS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
-$(BUILDDIR)/%.o: $(SRCDIR)/%.cpp | $(BUILDDIR)
+$(BUILDDIR)/%.o: $(SRCDIR)/%.cpp $(EVALSTAMP) | $(BUILDDIR)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 

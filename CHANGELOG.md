@@ -17,7 +17,7 @@ are sitting.
 | Phases complete | 1–6. **Phase 7 in progress** — singular extensions merged, +39.04 +/- 12.69. |
 | Strength | **3195 +/- 24 CCRL Blitz** (2026-07-28, 720 games, Zahak bracket) |
 | Bench, with a net | **4,994,552** (was 4,063,328 at `base-phase6`) |
-| Bench, no net | **5,001,521** |
+| Bench, no net | **6,991,803** |
 | Current net | `nets/rogatia-p6.nnue`, `(768→256)x2→1`, 112M positions |
 | SPRT baseline | tag `base-phase6` |
 | Work split | **See "Active work split — set 2026-07-28" below.** Training box regenerates the corpus and retrains; laptop does Phase 7 search. |
@@ -36,8 +36,21 @@ fresh clone builds the *PSQT fallback* engine, which is ~360 Elo weaker and
 benches 5,001,521. You cannot reproduce the 3195 measurement, and you cannot
 SPRT anything about the evaluation, without the net file.
 
-If `./rogatia bench` prints 5,001,521 you have no net. With the net it is
-4,063,328.
+The no-net and with-net bench counts are **per commit** — do not memorise a
+pair. At `main` today it is **6,991,803 without** and **4,994,552 with**; at
+`base-phase6` it was 5,001,521 and 4,063,328. Always compare against the
+number in the state table for the commit you are standing on.
+
+**Fixed 2026-07-28, and worth knowing it ever existed:** `make EVALFILE=<net>`
+used to do *nothing* if objects already existed. EVALFILE is a compile flag,
+not a source file, so make saw no timestamp change and rebuilt nothing —
+`make EVALFILE=b` after `make EVALFILE=a` silently kept net a. That destroys
+precisely the comparison this project runs most: a new net SPRT'd against the
+old one on identical code, where both binaries end up carrying the same net and
+the result reads a clean, believable 0 Elo. The Makefile now stamps the value
+and every object depends on the stamp, so a net switch forces a rebuild and an
+unchanged one does not. If you are on a checkout from before this fix, `make
+clean` between net changes.
 
 Get it from the training box:
 
@@ -135,7 +148,7 @@ a much weaker search than you now have. The bugfixes are a bonus on top.
    missed — a no-net build regenerates PSQT-quality labels and wastes a day:
    ```bash
    make EVALFILE="$(pwd)/nets/rogatia-p6.nnue"
-   ./rogatia bench     # MUST print 4063328, not 5001521
+   ./rogatia bench     # MUST print the with-net count for your commit
    ```
 2. **Generate ~500M positions** (~1 day at the old 6k/sec — measure it again,
    NNUE eval is slower per node but the tree is smaller, so the rate will move):
