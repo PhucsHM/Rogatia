@@ -137,6 +137,12 @@ struct Worker {
     int pawnCorr[COLOR_NB][CORRHIST_SIZE]    = {};
     int nonPawnCorr[COLOR_NB][CORRHIST_SIZE] = {};
 
+    // Time management.  How much of the tree each root move consumed, indexed
+    // by from_to, which is unique among root moves; and how many iterations the
+    // best move has survived unchanged.
+    std::uint64_t rootNodes[4096]   = {};
+    int           bestMoveStability = 0;
+
     Move pv[MAX_PLY][MAX_PLY] = {};
     int  pvLen[MAX_PLY]       = {};
 
@@ -854,6 +860,8 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
                 extension = 1;
         }
 
+        const std::uint64_t nodesBefore = W.nodes;
+
         ss->currentMove = m;
         ss->movedPiece  = pos.piece_on(from_sq(m));
         ss->movedTo     = to_sq(m);
@@ -918,6 +926,9 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         }
 
         pos.unmake_move(m);
+
+        if (rootNode)
+            W.rootNodes[from_to(m)] += W.nodes - nodesBefore;
 
         if (aborted())
             return VALUE_DRAW;
@@ -1052,6 +1063,35 @@ void print_info(int depth, Score score) {
 
 // ------------------------------------------------------- time allocation ---
 
+// ---------------------------------------------------- time management ------
+
+// A flat fraction of the clock spends the same time on a position with one
+// legal reply as on a sharp middlegame.  These make the budget answer to what
+// the search is actually finding, expressed as multipliers in 1/128ths.
+//
+// Only reachable from iterative deepening, and bench is fixed-depth and never
+// enters this path -- so none of it can move the node count.  That also means
+// bench cannot verify it: this one is SPRT or nothing.
+constexpr int TM_SCALE = 128;
+
+// Iterations the best move has survived unchanged.  A move still standing after
+// several deepenings is unlikely to fall over now.
+constexpr int StabilityFactor[5] = {158, 130, 114, 104, 96};
+
+std::int64_t scaled_soft_limit(Move best) {
+    // If the best move consumed most of the tree, the alternatives were refuted
+    // cheaply and there is little left to learn by looking longer.  This is the
+    // cheapest large win available in blitz time management.
+    const std::uint64_t total = std::max<std::uint64_t>(W.nodes, 1);
+    const int frac = int(std::min<std::uint64_t>(
+        W.rootNodes[from_to(best)] * TM_SCALE / total, TM_SCALE));
+
+    const int nodeF = std::max(tunable::TmNodeBase - frac * tunable::TmNodeSlope / TM_SCALE, 32);
+    const int stabF = StabilityFactor[std::min(W.bestMoveStability, 4)];
+
+    return W.softLimit * nodeF / TM_SCALE * stabF / TM_SCALE;
+}
+
 void set_up_time(const Limits& limits, Color us) {
     W.nodeLimit = limits.nodes;
     W.useTime   = false;
@@ -1106,6 +1146,12 @@ void iterative_deepening(Position& pos, int maxDepth) {
     }
     Stack* const root = W.stack + ROOT_OFFSET;
 
+    // Per-search, not per-node: search_fixed_nodes and search_fixed_depth reach
+    // here too, and stale counts from one of those would misprice the next real
+    // search's budget.
+    std::memset(W.rootNodes, 0, sizeof(W.rootNodes));
+    W.bestMoveStability = 0;
+
     // The only full refresh in a normal search: every other accumulator in the
     // tree is derived from this one.
     if (nnue::loaded())
@@ -1153,8 +1199,10 @@ void iterative_deepening(Position& pos, int maxDepth) {
             break;
 
         previous = score;
-        if (W.pvLen[0] > 0)
-            W.rootBestMove = W.pv[0][0];
+        if (W.pvLen[0] > 0) {
+            W.bestMoveStability = (W.pv[0][0] == W.rootBestMove) ? W.bestMoveStability + 1 : 0;
+            W.rootBestMove      = W.pv[0][0];
+        }
         W.rootScore = score;
 
         if (!W.quiet)
@@ -1162,7 +1210,7 @@ void iterative_deepening(Position& pos, int maxDepth) {
 
         // Soft limit: checked only between iterations.  Starting an iteration
         // we cannot finish wastes the whole thing.
-        if (W.useTime && W.elapsed() >= W.softLimit)
+        if (W.useTime && W.elapsed() >= scaled_soft_limit(W.rootBestMove))
             break;
     }
 }
