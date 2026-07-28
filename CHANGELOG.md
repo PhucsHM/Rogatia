@@ -17,7 +17,7 @@ are sitting.
 | Phases complete | 1–6. **Phase 7 in progress** — singular extensions (+39.04 +/- 12.69) and correction history (+33.13 +/- 11.60) merged. |
 | Strength | **~3175 CCRL Blitz** — see "What the rating actually says" below. The gauntlet arithmetic returns 3195 +/- 24; three separate caveats all push it down, none up. |
 | Bench, with a net | **4,772,409** (4,063,328 at `base-phase6`) |
-| Bench, no net | **6,991,803** |
+| Bench, no net | **6,951,633** |
 | Current net | `nets/rogatia-p6.nnue`, `(768→256)x2→1`, 112M positions |
 | SPRT baseline | tag `base-phase6` |
 | Work split | **See "Active work split — set 2026-07-28" below.** Training box regenerates the corpus and retrains; laptop does Phase 7 search. |
@@ -36,7 +36,7 @@ fresh clone builds the *PSQT fallback* engine, which is ~360 Elo weaker. You can
 SPRT anything about the evaluation, without the net file.
 
 The no-net and with-net bench counts are **per commit** — do not memorise a
-pair. At `main` today it is **6,991,803 without** and **4,994,552 with**; at
+pair. At `main` today it is **6,951,633 without** and **4,772,409 with**; at
 `base-phase6` it was 5,001,521 and 4,063,328. Always compare against the
 number in the state table for the commit you are standing on.
 
@@ -50,6 +50,26 @@ the result reads a clean, believable 0 Elo. The Makefile now stamps the value
 and every object depends on the stamp, so a net switch forces a rebuild and an
 unchanged one does not. If you are on a checkout from before this fix, `make
 clean` between net changes.
+
+**Fixed 2026-07-28, same family of bug: every UCI tunable was invisible to
+every harness.** `tunable::print_options()` writes its 35 `option name ...`
+lines through `std::printf`, while `uci.cpp` writes Hash/Threads and the
+closing `uciok` through `std::cout`. Two buffers — and stdout is fully
+buffered on a pipe, so the tunables sat in it while the explicitly-flushed
+`uciok` went out ahead of them. On the wire the handshake read *three options,
+uciok, then the tunables*, and every harness stops collecting options at
+`uciok`. fastchess therefore built a three-entry option map and **discarded
+every `option.SingularDepth=10`-style argument**, warning once per game start.
+Typing `setoption` by hand always worked, which is why it survived so long.
+
+No merged result is affected — every SPRT to date compared two *binaries* and
+never set an option. But if you are on a checkout from before this fix,
+**no options-based test on it means anything**, including anything `scripts/
+spsa.py` would have produced. Sanity check before trusting any such run:
+
+```bash
+printf 'uci\nquit\n' | ./rogatia | tail -1     # must print uciok, not an option line
+```
 
 Get it from the training box:
 
