@@ -1,12 +1,21 @@
 # Rogatia roadmap
 
-Target: **3200+ CCRL**, blitz-optimized (5+0 and faster). Solo development, serious-hobby pace.
+Target: **3500+ CCRL Blitz**, blitz-optimized (5+0 and faster). Solo development,
+serious-hobby pace.
+
+**Raised from 3200 to 3500 on 2026-07-28, deliberately.** The engine is a blitz
+engine and is not intended to be competitive at classical, so it is measured on
+CCRL Blitz and tuned at the time control it plays. Two consequences follow and
+are not up for rediscussion: Phase 9 (king buckets, L2/L3, threat inputs) is
+required rather than optional, and OpenBench becomes a requirement, because
+above ~3300 a patch worth <3 Elo needs 50k-150k games and one box cannot supply
+them.
 
 ## Calibrating the target
 
 From the CCRL lists (July 2026): 3200 sits at rank ~185 of 667 on CCRL Blitz, among Rybka 4.1 and Critter 1.6a. It is the ceiling of an excellent hand-crafted evaluation, or the *floor* of a competent NNUE engine. A modern search with a mediocre self-trained net reaches 3300–3450; top-20 open source is 3620–3790.
 
-So **3200 is a milestone passed en route, not the finish line.** This plan is built to reach ~3400 and treats 3200 as the Phase 8 gate.
+So **3200 is a milestone passed en route, not the finish line.** This plan is built to reach ~3400 and treats 3200 as the Phase 8 gate; the 3500 target puts the finish line past the end of the phases written here, in continued Phase 9 iteration.
 
 ## The two engines of improvement
 
