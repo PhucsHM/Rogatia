@@ -53,6 +53,12 @@ constexpr int MAX_QUIETS_TRACKED = 32;
 // This only became worth doing once NNUE existed.  Against the piece-square
 // tables the residual was large and unstructured, and the table would have
 // learned noise; against a network it is small and has shape.
+// Fifty-move eval taper.  Nothing below RULE50_START; above it the evaluation
+// slides toward zero, reaching half at the hundred plies where the draw lands.
+// 65 was chosen after 20 measured -17.05 +/- 12.56 -- see corrected_eval().
+constexpr int RULE50_START = 65;
+constexpr int RULE50_SCALE = 70;    // (100 - START) * 2, so r == 100 halves it
+
 constexpr int CORRHIST_SIZE  = 16384;                 // power of two, masked
 constexpr int CORRHIST_GRAIN = 256;                   // table units per centipawn
 constexpr int CORRHIST_MAX   = CORRHIST_GRAIN * 32;   // +/- 32 cp of authority
@@ -287,7 +293,25 @@ Score correction(const Position& pos) {
 Score corrected_eval(Score raw, const Position& pos) {
     if (raw == VALUE_NONE)
         return VALUE_NONE;
-    return std::clamp(Score(raw + correction(pos)), Score(-VALUE_MATE_IN_MAX_PLY + 1),
+
+    // The fifty-move counter is a clock on the win, and nothing in the
+    // evaluation can read it.  Above a threshold the score slides toward zero,
+    // reaching half at the hundred plies where the draw lands.
+    //
+    // THE THRESHOLD IS THE ENTIRE PATCH.  The first attempt used 20 and lost
+    // 17 Elo over 1,500 games, because a counter above 20 is completely
+    // ordinary -- quiet maneuvering in any middlegame passes it without the
+    // slightest draw danger, and a search from a root at 15 crosses it a few
+    // plies down.  So instead of firing when the clock was running out, it
+    // fired during normal play and made the engine undervalue real advantages
+    // everywhere.  65 is where a draw is actually near: 35 plies of grace left,
+    // and an ordinary middlegame root never reaches it.
+    Score v = Score(raw + correction(pos));
+
+    if (const int over = pos.rule50_count() - RULE50_START; over > 0)
+        v = Score(v * (RULE50_SCALE - over) / RULE50_SCALE);
+
+    return std::clamp(v, Score(-VALUE_MATE_IN_MAX_PLY + 1),
                       Score(VALUE_MATE_IN_MAX_PLY - 1));
 }
 
