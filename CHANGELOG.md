@@ -32,8 +32,7 @@ counts either side of it are not comparable.
 ## The one thing that will trip you up
 
 **The net is not in git.** `nets/` and `*.nnue` are gitignored on purpose, so a
-fresh clone builds the *PSQT fallback* engine, which is ~360 Elo weaker and
-benches 5,001,521. You cannot reproduce the 3195 measurement, and you cannot
+fresh clone builds the *PSQT fallback* engine, which is ~360 Elo weaker. You cannot reproduce the 3195 measurement, and you cannot
 SPRT anything about the evaluation, without the net file.
 
 The no-net and with-net bench counts are **per commit** — do not memorise a
@@ -65,7 +64,7 @@ a space in it, which is why the Makefile quotes `EVALFILE`):
 
 ```bash
 make EVALFILE="$(pwd)/nets/rogatia-p6.nnue"
-./rogatia bench          # must print 4063328
+./rogatia bench          # must print the with-net count for your commit
 ```
 
 **Always check the checksum.** Two machines holding different nets produce
@@ -96,7 +95,7 @@ spurious losses on time.
 
 ### If you are on the laptop
 
-1. `git pull`, fetch the net (above), confirm bench 4063328.
+1. `git pull`, fetch the net (above), confirm the with-net bench for your commit.
 2. Your job is **Phase 7 search work** and the SPRTs that validate it. Baseline
    is `base-phase6`:
    ```bash
