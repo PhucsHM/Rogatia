@@ -850,8 +850,29 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             if (aborted())
                 return VALUE_DRAW;
 
-            if (s < singularBeta)
+            if (s < singularBeta) {
                 extension = 1;
+
+                // Double extension.  Failing low by a wide margin is a stronger
+                // statement than failing low at all: not merely "no alternative
+                // is as good", but "no alternative is remotely close".  A
+                // position with exactly one playable move is worth more than the
+                // single ply the ordinary extension gives it.
+                //
+                // Not at PV nodes.  A PV node is already searched at full width
+                // and the extension compounds down a line that is being explored
+                // exhaustively anyway, which is where the classic search
+                // explosion comes from.
+                if (!PvNode && s < singularBeta - tunable::DoubleExtMargin)
+                    extension = 2;
+            }
+            // Negative extension.  The TT move is NOT singular and the table
+            // already says this node beats beta, so several moves are good
+            // enough here.  A node with many winning moves is easy, and easy
+            // nodes deserve less depth, not more -- searching it at full depth
+            // spends effort proving something the table has already established.
+            else if (tt.score >= beta)
+                extension = -1;
         }
 
         ss->currentMove = m;
@@ -866,7 +887,13 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         // carry one, and the TT move is almost always moveCount 1, but both
         // branches read it so a pruned or illegal TT move cannot desynchronise
         // the two.  With extension == 0 every expression below is unchanged.
-        const int fullDepth = depth - 1 + extension;
+        // A negative extension can drive this below zero.  Clamp at 0, NOT at 1:
+        // zero is the qsearch handoff and is a perfectly good place for a node
+        // the table already says is easy.  Clamping at 1 means a depth-1 node
+        // searches its child at depth 1 as well, so depth stops decreasing and
+        // the line runs to MAX_PLY -- which is not an infinite loop, it is worse,
+        // a finite one that takes minutes per position.  `bench` hung on it.
+        const int fullDepth = std::max(depth - 1 + extension, 0);
 
         Score score;
         if (moveCount == 1) {
