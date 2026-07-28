@@ -742,6 +742,76 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             return is_mate_score(score) ? beta : score;
     }
 
+    // ProbCut.  If a capture already clears beta by a wide margin at reduced
+    // depth, the full-depth search will clear it too, and the node can be cut
+    // without ever running the main loop.  Captures only: they are the moves
+    // that swing the score far enough for the margin to be reachable, and there
+    // are few of them.
+    //
+    // The TT guard matters.  A stored score below probCutBeta from a search at
+    // least as deep is a direct refutation of the thing this is about to try to
+    // prove, so trying anyway is wasted work at best.
+    if (!PvNode && !excluded && !inCheck && depth >= tunable::ProbCutDepth
+        && !is_mate_score(beta) && staticEval != VALUE_NONE
+        && !(ttHit && tt.depth >= depth - 3 && tt.score < Score(beta + tunable::ProbCutMargin))) {
+
+        const Score probCutBeta = Score(beta + tunable::ProbCutMargin);
+
+        Move  caps[MAX_MOVES];
+        Move* capEnd = generate<CAPTURES>(pos, caps);
+        int   capScores[MAX_MOVES];
+        int   nCaps = 0;
+
+        for (Move* mm = caps; mm != capEnd; ++mm) {
+            // Only captures whose material swing could plausibly reach the
+            // margin.  Without this the loop searches losing captures that
+            // cannot possibly clear probCutBeta.
+            if (!see_ge(pos, *mm, int(probCutBeta) - int(staticEval)))
+                continue;
+            caps[nCaps]      = *mm;
+            capScores[nCaps] = score_move(pos, *mm, ttMove, ss);
+            ++nCaps;
+        }
+
+        for (int i = 0; i < nCaps; ++i) {
+            pick_next(caps, capScores, nCaps, i);
+            const Move m = caps[i];
+            if (!pos.is_legal(m))
+                continue;
+
+            ss->currentMove = m;
+            ss->movedPiece  = pos.piece_on(from_sq(m));
+            ss->movedTo     = to_sq(m);
+            if (nnue::loaded())
+                nnue::apply_move(pos, m, ss->acc, (ss + 1)->acc);
+            pos.make_move(m);
+
+            // Qsearch first: it is far cheaper and refutes most candidates.
+            Score sc = -qsearch<false>(pos, ss + 1, -probCutBeta, Score(-probCutBeta + 1));
+            if (sc >= probCutBeta)
+                sc = -search<false>(pos, ss + 1, -probCutBeta, Score(-probCutBeta + 1),
+                                    depth - tunable::ProbCutReduce, !cutNode);
+
+            pos.unmake_move(m);
+
+            if (aborted())
+                return VALUE_DRAW;
+
+            if (sc >= probCutBeta) {
+                TT.store(pos.key(), ss->ply, depth - tunable::ProbCutReduce + 1,
+                         BOUND_LOWER, m, sc, rawEval, PvNode);
+                return sc;
+            }
+        }
+
+        // The loop clobbered this ply's move fields; the main loop overwrites
+        // them per move, but anything reading them before the first move -- and
+        // any (ss-N) lookup from below -- would otherwise see a ProbCut
+        // candidate that was never played.
+        ss->currentMove = MOVE_NONE;
+        ss->movedPiece  = NO_PIECE;
+    }
+
     // Internal iterative reduction: no table move at this depth means no
     // ordering information, and searching blind at full depth is the most
     // expensive way to find one.  Search shallower, and let the entry this

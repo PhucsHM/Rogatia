@@ -49,7 +49,10 @@
     X(SeeNoisyMargin,   30,    10,    120)      \
     X(HistBonusMul,    300,   100,    600)      \
     X(HistBonusSub,    250,     0,    600)      \
-    X(HistBonusMax,   2400,  1000,   4000)
+    X(HistBonusMax,   2400,  1000,   4000)      \
+    X(ProbCutDepth,      5,     3,     10)      \
+    X(ProbCutMargin,   180,    50,    400)      \
+    X(ProbCutReduce,     4,     2,      6)
 
 namespace rogatia::tunable {
 
