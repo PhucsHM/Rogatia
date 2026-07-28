@@ -677,6 +677,17 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     const Score staticEval = corrected_eval(rawEval, pos);
     ss->staticEval         = staticEval;
 
+    // Corrplexity: how far the correction had to move the raw evaluation to
+    // make it believable.  Correction history already records where the
+    // evaluation is systematically wrong; its MAGNITUDE is a second, free
+    // signal -- a large correction means this kind of position is one the
+    // network reads badly, so the static score deserves less trust here than
+    // elsewhere.  Where it is untrustworthy, prune on it less and search more.
+    //
+    // Zero in check, where rawEval is VALUE_NONE and the difference is
+    // meaningless rather than small.
+    const int complexity = inCheck ? 0 : std::abs(int(staticEval) - int(rawEval));
+
     // A TT move from a different position must be re-validated from scratch --
     // key16 collides once every 65536 entries and playing a move that is not
     // in this position corrupts the board.
@@ -706,8 +717,12 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     // Reverse futility pruning: we are so far above beta that even giving up
     // the margin -- roughly a piece per ply of depth -- would not bring the
     // score back down.  Fail high on the static eval without searching.
+    // The margin carries a corrplexity term: failing high on a static score the
+    // correction had to drag a long way is exactly the case where doing so is
+    // wrong, so demand a bigger cushion there.
     if (!PvNode && !excluded && !inCheck && depth <= tunable::RfpDepth && !is_mate_score(beta)
-        && staticEval - tunable::RfpMargin * (depth - improving) >= beta)
+        && staticEval - tunable::RfpMargin * (depth - improving)
+             - complexity * tunable::CorrplexRfp / 16 >= beta)
         return staticEval;
 
     // Null move pruning: hand the opponent a free move.  If the position is
@@ -885,6 +900,12 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
 
                 r += cutNode * tunable::LmrCutNode;  // by far the largest term
                 r -= PvNode * LMR_SCALE;
+                // Same signal, other direction: an unreliable evaluation is a
+                // reason to look harder rather than to trust the ordering.
+                // A multiplier rather than a divisor, so that zero is a real off
+                // switch: a divisor has no value that disables the term, which
+                // makes the patch impossible to prove inert.
+                r -= complexity * tunable::CorrplexLmr * LMR_SCALE / 4096;
                 r -= improving * LMR_SCALE;
                 r -= inCheck * LMR_SCALE;
                 if (isQuiet) {
