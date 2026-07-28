@@ -15,7 +15,7 @@ are sitting.
 | | |
 |---|---|
 | Phases complete | 1–6. **Phase 7 in progress** — singular extensions merged, +39.04 +/- 12.69. |
-| Strength | **3195 +/- 24 CCRL Blitz** (2026-07-28, 720 games, Zahak bracket) |
+| Strength | **~3175 CCRL Blitz** — see "What the rating actually says" below. The gauntlet arithmetic returns 3195 +/- 24; three separate caveats all push it down, none up. |
 | Bench, with a net | **4,994,552** (was 4,063,328 at `base-phase6`) |
 | Bench, no net | **6,991,803** |
 | Current net | `nets/rogatia-p6.nnue`, `(768→256)x2→1`, 112M positions |
@@ -207,6 +207,48 @@ Windows / MinGW-GCC 16.1:
 That last row had not been checked since the net landed. NNUE inference is
 exactly where cross-`-march` determinism breaks — v2 has no AVX2, native has
 AVX-512 available — so **OpenBench eligibility survives Phase 6**.
+
+### What the rating actually says — reconciled 2026-07-28
+
+Both machines have quoted different numbers. Settled here: **~3175**, and the
+gauntlet's 3195 +/- 24 should not be quoted without the three caveats below.
+Every one of them pushes the figure down. None pushes it up.
+
+**1. A saturated anchor is inside the average.** The three implied ratings are
+3254 / 3180 / 3167. The 3254 comes from the 83.5% score against Zahak 7.1 —
+the same compression regime that made the *previous* anchor set useless.
+Inverse-variance weighting cannot discount it, because it weights by *sample
+error*, not by whether the Elo model is valid at that gap. A saturated anchor
+with 240 games looks confident and drags the mean up. The two anchors near an
+even score, where the model is trustworthy, agree on **3167–3180**.
+
+*Fix for next time: drop opponents scoring outside 25–75% rather than weighting
+them in.*
+
+**2. The anchors are three versions of one engine.** Zahak 7.1 / 8.0 / 9.0
+share a playing style, so they are not independent samples. A single family can
+be systematically easy or hard for this engine and the number would never show
+it. A second family is worth an hour and is the cheapest confidence available.
+
+**3. The measurement time control is not the rating's time control.** This one
+had not been recorded anywhere. The gauntlet ran at **8+0.08**; CCRL Blitz
+ratings — the anchors' published numbers — come from roughly **2 minutes + 1
+second**, about 15x more base time. The implied ratings assume relative strength
+is TC-invariant, and it is not.
+
+The bias is not neutral here. This engine is tuned hard for very fast play and
+the Zahak versions are general-purpose, so at 8+0.08 it plausibly performs
+*relatively better* against them than it would at 2+1 — which inflates the
+implied rating. Testable: re-run the gauntlet nearer 2+1 and see whether the
+number moves.
+
+**Related gap: `20+0.2` verification has never been run.** `CLAUDE.md` says to
+verify passing patches at 20+0.2, and no patch ever has been — not Phase 4's
+pruning set, not singular extensions, not correction history. Some of what is
+merged is *known* TC-sensitive in blitz's favour (Stockfish documents this for
+futility pruning), so a long-TC rating could sit further below the blitz figure
+than the blitz-first trade alone predicts. Not a problem for the stated goal.
+A problem the first time anyone quotes a 40/15 number.
 
 ### One reading of 3195 the laptop would flag
 

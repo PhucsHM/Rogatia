@@ -63,7 +63,7 @@ Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake,
 
 Build with a net: `make EVALFILE=/abs/path/to/net.nnue`. Nets are gitignored; the Phase 6 net is `nets/rogatia-p6.nnue`, trained on 112,000,683 self-play positions. `make run-nnue EVALFILE=...` is the accumulator gate — treat it as perft for the evaluation.
 
-**Measured: ~3195 +/- 24 CCRL Blitz.** 720 games at 8+0.08, `8moves_v3.epd`, Hash=16, Threads=1, concurrency 6, home box, 2026-07-28, against a new anchor set that brackets the engine instead of sitting under it.
+**Measured: ~3175 CCRL Blitz** (gauntlet arithmetic returns 3195 +/- 24; see `CHANGELOG.md`, "What the rating actually says" — three caveats, all pushing down). 720 games at 8+0.08, `8moves_v3.epd`, Hash=16, Threads=1, concurrency 6, home box, 2026-07-28, against a new anchor set that brackets the engine instead of sitting under it.
 
 | Opponent | CCRL Blitz | Games | W-L-D | Score | Implied Rogatia |
 |---|---|---|---|---|---|
