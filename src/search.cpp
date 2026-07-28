@@ -103,6 +103,11 @@ struct Stack {
     // move it is not allowed to see.
     Move   excludedMove = MOVE_NONE;
 
+    // This node is on the PV, or the table remembers it as having been.
+    // Sticky on purpose: it marks lines that mattered even after they stop
+    // being PV, and exempts them from a full ply of late-move reduction.
+    bool   ttPv = false;
+
     // The NNUE accumulator for the position at this ply, carried down the tree
     // incrementally rather than rebuilt.  Unused when no network is loaded.
     nnue::Accumulator acc{};
@@ -556,6 +561,13 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             || (tt.bound == BOUND_UPPER && tt.score <= alpha)))
         return tt.score;
 
+    // TTData has carried this flag on every probe since Phase 4 and nothing
+    // ever read it.  Sticky: once a node has been PV it stays marked through
+    // the table, which is exactly what makes this worth measuring rather than
+    // assuming -- the mark accumulates and weakens LMR everywhere, not only
+    // where it was earned.
+    ss->ttPv = PvNode || (ttHit && tt.pv);
+
     const bool  inCheck = pos.in_check();
     const Color us      = pos.side_to_move();
 
@@ -778,7 +790,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
                 int r = lmr_base(!isQuiet, depth, moveCount);
 
                 r += cutNode * tunable::LmrCutNode;  // by far the largest term
-                r -= PvNode * LMR_SCALE;
+                r -= ss->ttPv * LMR_SCALE;  // true whenever PvNode is
                 r -= improving * LMR_SCALE;
                 r -= inCheck * LMR_SCALE;
                 if (isQuiet) {
@@ -895,7 +907,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
 
     // rawEval, not staticEval -- see the note where the two are computed.
     if (!excluded)
-        TT.store(pos.key(), ss->ply, depth, bound, bestMove, best, rawEval, PvNode);
+        TT.store(pos.key(), ss->ply, depth, bound, bestMove, best, rawEval, ss->ttPv);
 
     return best;
 }
