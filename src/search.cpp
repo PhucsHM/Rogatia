@@ -84,6 +84,11 @@ struct Stack {
     Piece  movedPiece = NO_PIECE;
     Square movedTo    = SQ_A1;
 
+    // Set only while proving whether the TT move is singular.  That proof is a
+    // search of this same position at this same ply, so it has to be told which
+    // move it is not allowed to see.
+    Move   excludedMove = MOVE_NONE;
+
     // The NNUE accumulator for the position at this ply, carried down the tree
     // incrementally rather than rebuilt.  Unused when no network is loaded.
     nnue::Accumulator acc{};
@@ -479,10 +484,16 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             return alpha;
     }
 
+    // Non-zero only inside a singular proof.  It suppresses everything below
+    // that would either answer from the table -- whose entry was written by a
+    // search that DID see the excluded move, so it answers the wrong question --
+    // or write back to a key that does not describe this restricted search.
+    const Move excluded = ss->excludedMove;
+
     TTData tt;
     const bool ttHit = TT.probe(pos.key(), ss->ply, tt);
 
-    if (!PvNode && ttHit && tt.depth >= depth
+    if (!PvNode && !excluded && ttHit && tt.depth >= depth
         && (tt.bound == BOUND_EXACT || (tt.bound == BOUND_LOWER && tt.score >= beta)
             || (tt.bound == BOUND_UPPER && tt.score <= alpha)))
         return tt.score;
@@ -514,7 +525,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     // even a full capture sequence cannot reach alpha there is nothing here.
     // Unlike a bare margin test this one is verified, which is what separates
     // it from the 2019-era razoring that measured at zero and was removed.
-    if (!PvNode && !inCheck && !is_mate_score(alpha) && depth <= tunable::RazorDepth
+    if (!PvNode && !excluded && !inCheck && !is_mate_score(alpha) && depth <= tunable::RazorDepth
         && staticEval + tunable::RazorMargin * depth < alpha) {
         const Score score = qsearch<false>(pos, ss, alpha - 1, alpha);
         if (score < alpha)
@@ -524,7 +535,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     // Reverse futility pruning: we are so far above beta that even giving up
     // the margin -- roughly a piece per ply of depth -- would not bring the
     // score back down.  Fail high on the static eval without searching.
-    if (!PvNode && !inCheck && depth <= tunable::RfpDepth && !is_mate_score(beta)
+    if (!PvNode && !excluded && !inCheck && depth <= tunable::RfpDepth && !is_mate_score(beta)
         && staticEval - tunable::RfpMargin * (depth - improving) >= beta)
         return staticEval;
 
@@ -535,7 +546,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     // board, since pawn endings are where a null move lies.
     // ponytail: no verification search at high depth.  Upgrade path is a
     // re-search at depth-R with null move disabled before trusting the cutoff.
-    if (!PvNode && !inCheck && depth >= tunable::NmpDepth && staticEval >= beta
+    if (!PvNode && !excluded && !inCheck && depth >= tunable::NmpDepth && staticEval >= beta
         && (ss - 1)->currentMove != MOVE_NULL && !is_mate_score(beta)
         && (pos.pieces(pos.side_to_move()) & ~pos.pieces(PAWN) & ~pos.pieces(KING))) {
 
@@ -590,6 +601,10 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         pick_next(moves, scores, count, i);
         const Move m = moves[i];
 
+        // The whole point of a singular proof is to score this node without it.
+        if (m == excluded)
+            continue;
+
         if (!pos.is_legal(m))
             continue;
         ++moveCount;
@@ -638,6 +653,36 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         if (isQuiet && quietCount < MAX_QUIETS_TRACKED)
             quietsTried[quietCount++] = m;
 
+        // Singular extension.  The table says this move is at least tt.score;
+        // ask whether anything ELSE reaches nearly that, by searching the same
+        // position at reduced depth with this move removed and the window set
+        // just below it.  If every alternative fails low the move is carrying
+        // the position alone, and a position with one playable move is worth a
+        // ply more than its depth suggests.
+        //
+        // Runs at this same stack slot, so it clobbers ss->currentMove and
+        // friends -- which is why it sits above where those are assigned.
+        int extension = 0;
+        if (!rootNode && !excluded && m == ttMove && depth >= tunable::SingularDepth
+            && ttHit && tt.depth >= depth - 3 && (tt.bound & BOUND_LOWER)
+            && !is_mate_score(tt.score)) {
+
+            const Score singularBeta = tt.score - tunable::SingularMargin * depth / 16;
+
+            ss->excludedMove = m;
+            const Score s = search<false>(pos, ss, singularBeta - 1, singularBeta,
+                                          (depth - 1) / 2, cutNode);
+            ss->excludedMove = MOVE_NONE;
+
+            // An aborted search returns VALUE_DRAW, which is below singularBeta
+            // for any winning position and would extend on nothing at all.
+            if (aborted())
+                return VALUE_DRAW;
+
+            if (s < singularBeta)
+                extension = 1;
+        }
+
         ss->currentMove = m;
         ss->movedPiece  = pos.piece_on(from_sq(m));
         ss->movedTo     = to_sq(m);
@@ -646,17 +691,23 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         pos.make_move(m);
         TT.prefetch(pos.key());
 
+        // Full depth for this move, extension included.  Only the TT move can
+        // carry one, and the TT move is almost always moveCount 1, but both
+        // branches read it so a pruned or illegal TT move cannot desynchronise
+        // the two.  With extension == 0 every expression below is unchanged.
+        const int fullDepth = depth - 1 + extension;
+
         Score score;
         if (moveCount == 1) {
             // The first move gets the full window: it is the PV candidate and
             // there is nothing yet to prove it wrong against.
-            score = -search<PvNode>(pos, ss + 1, -beta, -alpha, depth - 1,
+            score = -search<PvNode>(pos, ss + 1, -beta, -alpha, fullDepth,
                                     PvNode ? false : !cutNode);
         } else {
             // Late move reductions: move ordering is good enough that a move
             // this far down the list is unlikely to be best, so search it
             // shallower and only pay full depth if it surprises us.
-            int newDepth = depth - 1;
+            int newDepth = fullDepth;
 
             if (depth >= tunable::LmrDepth && moveCount > tunable::LmrMoveCount) {
                 int r = lmr_base(!isQuiet, depth, moveCount);
@@ -678,7 +729,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
                     r -= hist * LMR_SCALE / tunable::LmrHistDiv;
                 }
 
-                newDepth = std::clamp(depth - (r / LMR_SCALE), 1, depth - 1);
+                newDepth = std::clamp(depth + extension - (r / LMR_SCALE), 1, fullDepth);
             }
 
             // Everything after the first move only has to be shown to be no
@@ -688,11 +739,11 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
 
             // Reduced and still beat alpha: the reduction was wrong, so redo it
             // at full depth before believing the score.
-            if (score > alpha && newDepth < depth - 1)
-                score = -search<false>(pos, ss + 1, -alpha - 1, -alpha, depth - 1, !cutNode);
+            if (score > alpha && newDepth < fullDepth)
+                score = -search<false>(pos, ss + 1, -alpha - 1, -alpha, fullDepth, !cutNode);
 
             if (PvNode && score > alpha && score < beta)
-                score = -search<true>(pos, ss + 1, -beta, -alpha, depth - 1, false);
+                score = -search<true>(pos, ss + 1, -beta, -alpha, fullDepth, false);
         }
 
         pos.unmake_move(m);
@@ -743,7 +794,11 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     }
 
     if (moveCount == 0)
-        return inCheck ? mated_in(ss->ply) : VALUE_DRAW;
+        // Inside a proof, "no moves" means the excluded move was the only one.
+        // That is a fact about this restricted search, not about the position,
+        // and returning a mate score would make every forced move look singular
+        // by way of a mate that does not exist.
+        return excluded ? alpha : (inCheck ? mated_in(ss->ply) : VALUE_DRAW);
 
     // LMP and SEE pruning skip moves after moveCount has already counted them,
     // so "moveCount > 0" no longer implies "something was searched".  What
@@ -758,7 +813,11 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     const Bound bound = (best >= beta)      ? BOUND_LOWER
                       : (PvNode && bestMove != MOVE_NONE) ? BOUND_EXACT
                                                           : BOUND_UPPER;
-    TT.store(pos.key(), ss->ply, depth, bound, bestMove, best, staticEval, PvNode);
+    // Never from inside a proof.  This search deliberately refused to look at
+    // the position's best move, so its score does not describe the position --
+    // storing it under the real key poisons the entry for every later probe.
+    if (!excluded)
+        TT.store(pos.key(), ss->ply, depth, bound, bestMove, best, staticEval, PvNode);
 
     return best;
 }
