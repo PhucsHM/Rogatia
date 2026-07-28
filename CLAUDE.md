@@ -83,9 +83,9 @@ smallest rather than the largest — 19 of the 26 fifty-move draws came from
 positions that were never winning, where a fifty-move draw is a good result.
 This is what Phase 7 is now working through, in that order of size.
 
-Under test or queued, none merged: **Syzygy probing in search** (`phase7-syzygy`),
+Merged after passing: **Syzygy probing in search** (+24.07 +/- 9.41). Under test or queued:
 **the repetition ply distinction** (`phase7-repetition`), **the fifty-move eval
-taper** (`phase7-rule50`). `scripts/testqueue.ps1` runs them back to back
+taper** (`phase7-rule50`). `scripts/testqueue.sh` runs them back to back
 unattended — see `docs/TESTING.md`.
 
 Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake, movegen (perft 37/37, 626,461,214 nodes bit-exact), fail-soft PVS with iterative deepening and aspiration windows, quiescence with SEE and delta pruning, bucketed TT, killers, butterfly history, continuation history, null move, LMR, RFP, LMP, SEE pruning, futility pruning, razoring, history pruning of quiets, internal iterative reduction, singular extensions, **NNUE evaluation** (`(768 → 256)x2 → 1`, SCReLU, incremental accumulator), tapered PeSTO PSQT as the no-net fallback, full UCI, 33 search constants exposed as UCI spin options (`src/tunable.h`), deterministic bench (**4,772,409** with a net, **6,951,633** without, at depth 12 — these move with every search change, so trust the CHANGELOG state table over any number quoted in prose).
