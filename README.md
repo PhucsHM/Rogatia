@@ -6,7 +6,7 @@ A UCI chess engine written from scratch in C++20, optimized for blitz time contr
 
 ## Goals
 
-- **3200+ CCRL**, by way of a modern alpha-beta search and a self-trained NNUE evaluation. Neural evaluation inside alpha-beta, rather than MCTS — the search runs on CPU, which is what blitz and the rating lists both reward.
+- **3500+ CCRL**, by way of a modern alpha-beta search and a self-trained NNUE evaluation. Neural evaluation inside alpha-beta, rather than MCTS — the search runs on CPU, which is what blitz and the rating lists both reward.
 - **Blitz-first.** Search parameters tuned at the time control the engine is meant to play, with real effort spent on time management rather than treating it as a fixed fraction of the clock.
 - **Clean provenance.** Every network is trained exclusively on Rogatia's own self-play games. No Leela data, no Stockfish data, no third-party nets.
 
