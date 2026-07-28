@@ -15,12 +15,20 @@ GAMES=${1:-400}
 ENGINE=$(bin "${2:-$ROOT/rogatia-base}")
 
 # name : CCRL Blitz (40/4) rating : that rating's own error bar.
-# 1-CPU 64-bit entries, list read 2026-07-27 from
-# https://computerchess.org.uk/ccrl/404/cgi/compare_engines.cgi
-# None of these three versions appears on CCRL 40/15, so Blitz is the only
-# anchor available. The Blunder binary is the -avx2 build; CCRL's "64-bit"
-# entry may be a slower one, which would read its anchor slightly low.
-ANCHORS="toad-1.0.0:1776:18 goldfish-2.1.1:2252:16 blunder-8.5.5:2664:11"
+# 1-CPU 64-bit entries, list read 2026-07-28 from
+# https://computerchess.org.uk/404/rating_list_all.html
+#
+# Replaced at Phase 6. The original set (toad 1776, goldfish 2252, blunder
+# 2664) is saturated: the engine scored 99.4%, 96.0% and 95.4% against them,
+# and a score that lopsided converts to nothing usable. These three bracket
+# the engine instead of sitting under it.
+#
+# Caveat worth knowing: three versions of ONE engine share a playing style, so
+# they are not fully independent anchors the way three different engines would
+# be. They were chosen because Zahak publishes a Linux binary for every version
+# and its versions happen to span the band. Add a different family before
+# treating the number as settled.
+ANCHORS="zahak-7.1:2972:18 zahak-8.0:3160:16 zahak-9.0:3292:12"
 
 OUT=$ROOT/sprt-results/gauntlet-$(date +%Y%m%d-%H%M%S)
 mkdir -p "$OUT"

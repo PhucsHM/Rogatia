@@ -63,17 +63,19 @@ Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake,
 
 Build with a net: `make EVALFILE=/abs/path/to/net.nnue`. Nets are gitignored; the Phase 6 net is `nets/rogatia-p6.nnue`, trained on 112,000,683 self-play positions. `make run-nnue EVALFILE=...` is the accumulator gate — treat it as perft for the evaluation.
 
-**Measured: ~2799 +/- 42 CCRL Blitz.** 720 games at 8+0.08, `8moves_v3.epd`, Hash=16, Threads=1, concurrency 6, home box, 2026-07-27. Every game ended in a chess result — no time losses, no illegal moves, and no corrupt PV warnings.
+**Measured: ~3195 +/- 24 CCRL Blitz.** 720 games at 8+0.08, `8moves_v3.epd`, Hash=16, Threads=1, concurrency 6, home box, 2026-07-28, against a new anchor set that brackets the engine instead of sitting under it.
 
 | Opponent | CCRL Blitz | Games | W-L-D | Score | Implied Rogatia |
 |---|---|---|---|---|---|
-| Toad 1.0.0 | 1776 +/- 18 | 240 | 237-0-3 | 99.4% | saturated |
-| Goldfish 2.1.1 | 2252 +/- 16 | 240 | 223-2-15 | 96.0% | saturated |
-| Blunder 8.5.5 | 2664 +/- 11 | 240 | 138-49-53 | 68.5% | 2799 +/- 42 |
+| Zahak 7.1 | 2972 +/- 18 | 240 | 175-14-51 | 83.5% | 3254 +/- 46 |
+| Zahak 8.0 | 3160 +/- 16 | 240 | 84-70-86 | 52.9% | 3180 +/- 39 |
+| Zahak 9.0 | 3292 +/- 12 | 240 | 37-120-83 | 32.7% | 3167 +/- 39 |
 
-The table above is the **Phase 4** measurement and is kept for history. As of Phase 6 every row is saturated — see the note below.
+Inverse-variance weighted: **3195 +/- 24**. The three anchors disagree by only 87 points, against 189 for the old set, and the two nearest an even score — the ones the Elo model handles best — agree to within 13. The 83.5% row reads high, which is the usual compression at a wide gap. **This is the first measurement since Phase 4 that is worth quoting**, because every anchor returned a usable number rather than saturating.
 
-**This number rests on a single anchor and is weaker evidence than the 2197 it replaces.** Toad and Goldfish are now beaten so decisively that the Elo model returns nothing usable from them, so 2799 is Blunder's own rating plus one measured difference — no cross-check, no disagreement to average away. It also overshoots the Phase 4 gate (~2400–2500) by ~300 and lands at the Phase 6 target *before* NNUE, which is a large enough surprise to deserve suspicion rather than celebration. **Before Phase 6, replace the anchor set with three engines in the 2700–3000 band** so the next measurement has cross-checks again.
+**Caveat: the three anchors are three versions of one engine**, so they share a playing style and are not fully independent the way three different engines would be. Zahak was chosen because it publishes a Linux binary for every version and its versions happen to span the band; Weiss and Simbelmyne have no usable Linux x86-64 assets, and Viridithas jumps 3244 -> 3423 with nothing between. Add a second family before treating 3195 as settled.
+
+The previous anchor set (Toad 1776, Goldfish 2252, Blunder 8.5.5 2664) is retired: the engine scored 99.4%, 96.0% and 95.4% against them. Ratings read 2026-07-28 from `https://computerchess.org.uk/404/rating_list_all.html`.
 
 Reproduce: `CONCURRENCY=6 scripts/gauntlet.sh 240 ./rogatia`. Full protocol in `docs/TESTING.md`.
 

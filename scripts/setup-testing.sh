@@ -43,6 +43,16 @@ done
 #   Blunder 8.5.5  2664 +/- 11
 E=$ROOT/tools/engines
 
+# Zahak 7.1 / 8.0 / 9.0 -- the Phase 6 anchor set, bracketing the engine at
+# 2972 / 3160 / 3292 CCRL Blitz. One repo, Linux binary per version.
+for zv in 7.1:7.1 8.0:8.0-avx 9.0:9.0-avx; do
+	ztag=${zv%%:*}; zfile=${zv##*:}
+	if [ ! -x "$E/zahak-$ztag" ]; then
+		get "$E/zahak-$ztag" "https://github.com/amanjpro/zahak/releases/download/$ztag/zahak-linux-amd64-$zfile"
+		chmod +x "$E/zahak-$ztag"
+	fi
+done
+
 if [ ! -x "$E/toad-1.0.0" ]; then
 	get "$TMP/toad.tar.gz" https://github.com/dannyhammer/toad/releases/download/v1.0.0/toad_v1.0.0_x86_64-unknown-linux-musl.tar.gz
 	# The tarball is flat: toad, README.md, CHANGELOG.md. Take only the binary.
