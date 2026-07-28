@@ -34,13 +34,12 @@ config.json
 .idea/
 .DS_Store
 compile_commands.json
+# Baseline and comparison binaries built from tags during testing.
 rogatia-base
-rogatia-phase4
-sprt-results/
-books/
-tools/
-data/
-nets/
 rogatia-dev
 rogatia-nnue
 rogatia-hce
+rogatia-phase4
+
+# Trained networks live here; they are release assets, not repo content.
+nets/
