@@ -456,7 +456,7 @@ bool Position::is_legal(Move m) const {
     }
 
     // Otherwise legal unless the piece is pinned and leaves the pin ray.
-    return !(blockers_for_king(us) & square_bb(from)) || aligned(from, to, ksq);
+    return !(blockers_for_king() & square_bb(from)) || aligned(from, to, ksq);
 }
 
 bool Position::gives_check(Move m) const {

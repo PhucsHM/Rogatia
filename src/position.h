@@ -78,8 +78,16 @@ public:
     Key non_pawn_key(Color c) const { return st_.nonPawnKey[c]; }
 
     Bitboard checkers() const { return st_.checkers; }
-    Bitboard blockers_for_king(Color c) const { return st_.blockers[c]; }
-    Bitboard pinned(Color c) const { return st_.blockers[c] & byColor_[c]; }
+    // Side to move only, and deliberately not parameterised by colour.
+    // compute_checkers_and_blockers() stops after one pass, so the other
+    // colour's entry holds the PREVIOUS ply's values.  A `Color` parameter here
+    // would be correct for one argument and silently wrong for the other, which
+    // is a landmine rather than an API -- and one Phase 7 walks straight past,
+    // since a gives_check() fast path for check extensions is exactly the
+    // "optimisation" that would reach for it.  Restoring the second pass is the
+    // price of getting the parameter back.
+    Bitboard blockers_for_king() const { return st_.blockers[sideToMove_]; }
+    Bitboard pinned() const { return st_.blockers[sideToMove_] & byColor_[sideToMove_]; }
     bool     in_check() const { return st_.checkers != 0; }
 
     // ------------------------------------------------------------ queries --

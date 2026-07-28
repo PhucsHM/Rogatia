@@ -80,7 +80,7 @@ else ifeq ($(build),debug)
 	LDFLAGS  += -fsanitize=address,undefined
 endif
 
-.PHONY: all debug release perft bench run-perft nnue-test run-nnue clean format
+.PHONY: all debug release perft bench run-perft nnue-test run-nnue keycheck run-keycheck clean format
 
 all: $(EXE)
 
@@ -117,6 +117,22 @@ nnue-test: $(NNUE_SRC) $(PERFT_OBJ) | $(BUILDDIR)
 
 run-nnue: nnue-test
 	@$(BUILDDIR)/run_nnue "$(EVALFILE)"
+
+# ---- keys: perft for the Zobrist sets --------------------------------------
+# Five key sets are maintained on every piece event and, until 2026-07-28,
+# nothing checked four of them.  Perft counts nodes and never compares keys;
+# unmake_move restores BoardState by popping, so keys round-trip correctly even
+# if update_keys attributes a piece to the wrong set.  A bug there stays
+# invisible until something READS pawnKey or nonPawnKey -- which correction
+# history now does.  Run this after touching update_keys, make_move, or
+# anything that adds a key set.
+KEYCHECK_SRC := $(TESTDIR)/run_keycheck.cpp
+
+keycheck: $(KEYCHECK_SRC) $(PERFT_OBJ) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -I$(SRCDIR) -o $(BUILDDIR)/run_keycheck $(KEYCHECK_SRC) $(PERFT_OBJ)
+
+run-keycheck: keycheck
+	@$(BUILDDIR)/run_keycheck
 
 # ---- bench: the determinism fingerprint ------------------------------------
 # The node count printed here goes in every commit message.
