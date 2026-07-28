@@ -46,23 +46,37 @@ import time
 ALPHA = 0.602
 GAMMA = 0.101
 
-# name, initial, min, max
+# name, initial, min, max, c_end
+#
 # Defaults target the parameters that have never been tuned AND were chosen by
 # reasoning rather than measurement -- everything added during Phase 7, plus
 # LmrHistDiv, which was reset by hand when the LMR history statistic changed
 # from one table to three.  Tuning all 36 at once converges far more slowly for
 # the same games; this subset is where the error is most likely to be.
+#
+# c_end is the perturbation at the end of the run and it is set PER PARAMETER,
+# not derived from the range, because these parameters are not in the same
+# units.  The published guidance is 4 centipawns for evaluation-scale values
+# (this engine's scale is ~100 per pawn, so 4 means 4), with a larger value for
+# anything Elo-insensitive so a match can still see the difference.  Depths get
+# 1 -- a whole ply is the smallest meaningful step and a fractional one is
+# rounded away.  History divisors are in table units, thousands wide, and get
+# scaled to match.  Getting these wrong is the failure the maths cannot catch:
+# too small and a parameter never moves, too large and the two halves of every
+# game pair are different engines.
 DEFAULT_PARAMS = [
-    ("SingularDepth",    8,     4,    12),
-    ("SingularMargin",  32,     8,   128),
-    ("FpDepth",          8,     2,    12),
-    ("FpMargin",       150,    40,   400),
-    ("RazorDepth",       4,     1,     8),
-    ("RazorMargin",    400,   100,   900),
-    ("HistPruneDepth",   6,     2,    10),
-    ("HistPruneMargin", 2048, 256,  8192),
-    ("IirDepth",         4,     2,     8),
-    ("LmrHistDiv",   24576,  2048, 65536),
+    ("SingularDepth",    8,     4,    12,    1),
+    ("SingularMargin",  32,     8,   128,    4),
+    ("FpDepth",          8,     2,    12,    1),
+    ("FpMargin",       150,    40,   400,    4),
+    ("RazorDepth",       4,     1,     8,    1),
+    # Razoring fires at low depth and rarely decides a game, so it is one of the
+    # insensitive ones the guidance warns about: 4 would not register.
+    ("RazorMargin",    400,   100,   900,    8),
+    ("HistPruneDepth",   6,     2,    10,    1),
+    ("HistPruneMargin", 2048, 256,  8192,  256),
+    ("IirDepth",         4,     2,     8,    1),
+    ("LmrHistDiv",   24576,  2048, 65536, 2048),
 ]
 
 
@@ -70,19 +84,24 @@ class Param:
     def __init__(self, name, value, lo, hi, c_end=None, r_end=None):
         self.name, self.lo, self.hi = name, lo, hi
         self.value = float(value)
-        # Perturbation size at the end of the run.  A twentieth of the range is
-        # the usual starting point: large enough that a match can see the
-        # difference, small enough not to be a different engine.
+        # Perturbation at the end of the run.  Supplied per parameter in
+        # DEFAULT_PARAMS because these values are not in comparable units; the
+        # range/20 fallback is only for a parameter passed in without one.
         self.c_end = c_end if c_end else max(1.0, (hi - lo) / 20.0)
-        # Learning rate, and it must NOT be divided by c_end^2 -- a() already
-        # multiplies by it, so dividing here cancels the term exactly and gives
-        # every parameter the same absolute step regardless of range.  The
-        # effective step is a/c ~ r_end * c_end, so keeping r_end constant makes
-        # each parameter move in proportion to its own range, which is the
-        # intent.  Sized so a consistent gradient can cross roughly half a range
-        # over the run: the default 2500 iterations is few by fishtest
-        # standards, and too small a rate simply does not move in that budget.
-        self.r_end = r_end if r_end else 0.02
+        # Learning rate, used directly: a() multiplies by c_end^2, which is the
+        # published convention, so r_end must NOT be pre-divided by c_end^2 --
+        # doing that cancels the term exactly and hands every parameter the same
+        # absolute step regardless of its scale.  That was the first bug the
+        # self-test caught, and it looked exactly like "SPSA found nothing in the
+        # wide-range parameters".
+        #
+        # 0.002 is the published figure for evaluation-scale parameters paired
+        # with c_end = 4.  It is deliberately small: the effective step is
+        # a/c ~ r_end * c_end, so this moves a parameter slowly and needs tens of
+        # thousands of games to converge.  That is what SPSA costs, and inflating
+        # it to converge in fewer games buys movement toward whatever the noise
+        # happened to say.
+        self.r_end = r_end if r_end else 0.002
 
     def c(self, k, n):
         return self.c_end * ((n + 1) / (k + 1)) ** GAMMA
@@ -205,10 +224,19 @@ def selftest():
 
     Catches the failures that matter: a sign error walks away from the optimum,
     a scaling error stalls, a clamping error pins parameters at a bound.  All
-    three look like "SPSA just didn't find much" after two days of real games.
+    three look like "SPSA just didn't find much" after days of real games.
+
+    The targets sit CLOSE to the starting values, which is not a way of making
+    the test easy -- it is the regime the published constants are for.  r_end
+    0.002 with c_end 4 gives an effective step of about 0.008 units per
+    iteration, so it polishes a parameter that is already nearly right.  Asking
+    it to carry FpMargin 110 centipawns fails no matter how long it runs:
+    measured on this objective, 150,000 iterations (2.4 million games) still
+    left it 11% of the range short.  A parameter suspected of being badly wrong
+    needs a bigger c_end, exactly as the guidance says about insensitive ones.
     """
-    target = {"SingularDepth": 10, "FpMargin": 260, "LmrHistDiv": 40000}
-    params = [Param(nm, init, lo, hi) for nm, init, lo, hi in DEFAULT_PARAMS
+    target = {"SingularDepth": 10, "FpMargin": 172, "LmrHistDiv": 33000}
+    params = [Param(nm, init, lo, hi, ce) for nm, init, lo, hi, ce in DEFAULT_PARAMS
               if nm in target]
 
     def objective(plus, minus):
@@ -223,10 +251,10 @@ def selftest():
 
     class Cfg: pass
     cfg = Cfg()
-    cfg.params, cfg.iterations, cfg.pairs = params, 3000, 1
+    cfg.params, cfg.iterations, cfg.pairs = params, 30000, 1
     cfg.outdir, cfg.checkpoint, cfg.objective = "spsa-results/selftest", 10 ** 9, objective
 
-    print("optimising a known quadratic; no games are played")
+    print("optimising a known quadratic over 30000 iterations; no games are played")
     print("start :  " + "  ".join("%s=%d" % (p.name, p.clamped(p.value)) for p in params))
     spsa(cfg)
     print("end   :  " + "  ".join("%s=%d" % (p.name, p.clamped(p.value)) for p in params))
