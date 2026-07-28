@@ -338,11 +338,17 @@ int score_move(const Position& pos, Move m, Move ttMove, const Stack* ss) {
 
         // A small negative threshold keeps roughly-even trades in the good
         // bucket; only clearly losing captures get pushed behind the quiets.
-        // Capture history rides inside the bucket, never across it: the
-        // good/bad split is 2^21 wide and the most this can add is ~16k, so a
-        // losing capture can never be ordered above a winning one.
+        // Scaled down, not raw.  Not crossing the good/bad bucket is the easy
+        // invariant and it is not the one that matters: MVV-LVA's `value` spans
+        // roughly 700..14300, while capture history spans +/-16384, so added
+        // raw the learned term simply overrides the material term and a
+        // well-remembered pawn capture outranks taking a queen.  Raw measured
+        // -20 +/- 23 over 400 games.  Divided, history breaks ties between
+        // captures of similar material instead of replacing the ranking: at the
+        // default the term is +/-2048, under the 3520 gap between a pawn and a
+        // knight, so it reorders the near-equal cases and leaves the rest.
         return (see_ge(pos, m, -20) ? SCORE_GOODCAP : SCORE_BADCAP) + value
-             + *capt_hist(pos, m);
+             + *capt_hist(pos, m) / tunable::CaptHistDiv;
     }
 
     if (m == ss->killers[0])
