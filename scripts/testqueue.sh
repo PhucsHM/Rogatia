@@ -49,6 +49,7 @@ QUEUE=(
   "syzygy|rogatia-tb|rogatia-tb|0|5|option.SyzygyPath=C:/Users/minhp/syzygy/3-4-5"
   "repetition|rogatia-rep|rogatia-base|0|5|"
   "rule50|rogatia-r50|rogatia-base|0|5|"
+  "ttpv|rogatia-ttpv|rogatia-base|0|5|"
 )
 
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$SUMMARY"; }
