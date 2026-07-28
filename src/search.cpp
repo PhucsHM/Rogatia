@@ -929,8 +929,20 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
                 bestMove = m;
 
                 if (PvNode) {
-                    W.pv[ss->ply][0] = m;
-                    const int childLen = W.pvLen[ss->ply + 1];
+                    // The child only left a PV behind if it was searched as a
+                    // PV node: moveCount 1, or the full-window re-search above,
+                    // which runs only while the score stays under beta.  When a
+                    // null window fails high no PV child ever ran, and
+                    // pvLen[ply + 1] still holds the length an earlier, deeper
+                    // search left in that slot -- copying it splices a stale
+                    // tail onto a legitimate move.  That is the `PV continues
+                    // after checkmate` warning: the tail outlives the mate that
+                    // ended the real line.  The move itself is known good, so
+                    // keep it and drop the tail.
+                    const bool childHasPv = moveCount == 1 || score < beta;
+
+                    W.pv[ss->ply][0]   = m;
+                    const int childLen = childHasPv ? W.pvLen[ss->ply + 1] : 0;
                     std::memcpy(&W.pv[ss->ply][1], &W.pv[ss->ply + 1][0],
                                 std::size_t(childLen) * sizeof(Move));
                     W.pvLen[ss->ply] = childLen + 1;
