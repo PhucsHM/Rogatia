@@ -52,6 +52,20 @@ constexpr int MAX_QUIETS_TRACKED = 32;
 // This only became worth doing once NNUE existed.  Against the piece-square
 // tables the residual was large and unstructured, and the table would have
 // learned noise; against a network it is small and has shape.
+// Fifty-move eval taper.  Nothing happens below RULE50_START; above it the
+// evaluation slides toward zero, reaching half by the time the counter hits the
+// hundred plies where the draw actually lands.
+//
+// The threshold is the whole point.  A taper that starts at zero shrinks the
+// evaluation at every node in the tree, and a smaller evaluation clears fewer
+// pruning margins -- measured, that cost 11.5% more nodes for the same depth,
+// paid in every position to fix something that only happens in long endings.
+// Starting at 20 leaves an ordinary search untouched, because a twelve-ply
+// search from a fresh position never gets there, while a genuine endgame whose
+// root is already at sixty is tapered from its first node.
+constexpr int RULE50_START = 20;
+constexpr int RULE50_SCALE = 160;   // (100 - START) * 2, so r == 100 halves it
+
 constexpr int CORRHIST_SIZE  = 16384;                 // power of two, masked
 constexpr int CORRHIST_GRAIN = 256;                   // table units per centipawn
 constexpr int CORRHIST_MAX   = CORRHIST_GRAIN * 32;   // +/- 32 cp of authority
@@ -209,7 +223,25 @@ Score correction(const Position& pos) {
 Score corrected_eval(Score raw, const Position& pos) {
     if (raw == VALUE_NONE)
         return VALUE_NONE;
-    return std::clamp(Score(raw + correction(pos)), Score(-VALUE_MATE_IN_MAX_PLY + 1),
+
+    // The fifty-move counter is a clock on the win, and nothing in the
+    // evaluation can see it.  A winning position ninety plies into a
+    // capture-free, pawn-free stretch is worth far less than the identical
+    // position at zero, because the draw arrives before the win does.  Without
+    // this the engine shuffles happily at ninety and is surprised at a hundred.
+    //
+    // Untouched below the threshold, deliberately.  The standing warning in
+    // CHANGELOG is that changing the eval SCALE silently re-tunes every pruning
+    // margin in tunable.h against it -- the wdl=0.75 net did exactly that.
+    // Leaving ordinary positions bit-identical keeps the margins calibrated
+    // against the scale they were measured on, and confines the change to the
+    // positions the gauntlet says we are losing.
+    Score v = Score(raw + correction(pos));
+
+    if (const int over = pos.rule50_count() - RULE50_START; over > 0)
+        v = Score(v * (RULE50_SCALE - over) / RULE50_SCALE);
+
+    return std::clamp(v, Score(-VALUE_MATE_IN_MAX_PLY + 1),
                       Score(VALUE_MATE_IN_MAX_PLY - 1));
 }
 
