@@ -72,6 +72,27 @@ spsa.py` would have produced. Sanity check before trusting any such run:
 printf 'uci\nquit\n' | ./rogatia | tail -1     # must print uciok, not an option line
 ```
 
+**Syzygy is now wired into the search (branch `phase7-syzygy`), and it has one
+design property that reads like a bug if you meet it cold.** Fathom's
+`tb_probe_wdl` wrapper refuses any position whose fifty-move counter is
+non-zero, so the WDL probe fires at tablebase *entry* -- the child of the
+capture that drops the position to five men -- and not throughout the ending.
+That is deliberate and it is the case worth having: it is the moment the engine
+decides whether to trade into the ending at all, which is the bucket the
+gauntlet said we were losing (17 of 86 draws against Zahak 8.0 were positions
+we evaluated at +1.00 and then liquidated into dead material). Sitting inside a
+drawn KBvK the engine will still report the bishop as +3.87, and that costs
+nothing, because the game is drawn either way. Won positions are handled
+separately at the root by a DTZ probe, which is what actually makes progress.
+
+Probing is dormant until `SyzygyPath` is set, so `bench` is unchanged at
+4,772,409 and a machine with tablebases benches identically to one without.
+**Setting the option by hand and then running `bench` will differ -- don't.**
+
+The laptop now has the full set locally at `C:/Users/minhp/syzygy/3-4-5`, all
+290 files, verified byte-for-byte against the home box. The home box's copy is
+at `~/syzygy/3-4-5`.
+
 Get it from the training box:
 
 ```bash

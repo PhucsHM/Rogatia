@@ -14,6 +14,7 @@
 #include "perft.h"  // move_to_uci
 #include "position.h"
 #include "search.h"
+#include "tbprobe.h"
 #include "tt.h"
 #include "tunable.h"
 
@@ -150,6 +151,17 @@ void cmd_setoption(Engine& e, std::istringstream& is) {
         TT.resize(std::size_t(e.hashMb));
     } else if (name == "Move Overhead") {
         e.moveOverhead = std::clamp(parse_int(value, MOVE_OVERHEAD_DEFAULT), 0, 5000);
+    } else if (name == "SyzygyPath") {
+        // Until this arrives TB_LARGEST is zero and the search never probes,
+        // which is what keeps `bench` identical on a machine with tablebases
+        // and one without.  Never set it before a bench.
+        tb_free();
+        if (!value.empty() && value != "<empty>" && tb_init(value.c_str()) && TB_LARGEST > 0)
+            std::cout << "info string syzygy: " << TB_LARGEST
+                      << "-piece tablebases from " << value << '\n' << std::flush;
+        else
+            std::cout << "info string syzygy: no tablebases at " << value
+                      << ", probing stays off\n" << std::flush;
     } else {
         // Every search constant lives in tunable.h so SPSA can drive it without
         // a recompile.  Unknown names still fall through silently, as UCI wants.
@@ -180,6 +192,7 @@ void uci_loop() {
                       << "option name Threads type spin default 1 min 1 max 1\n"
                       << "option name Move Overhead type spin default " << MOVE_OVERHEAD_DEFAULT
                       << " min 0 max 5000\n"
+                      << "option name SyzygyPath type string default <empty>\n"
                       << std::flush;
             tunable::print_options();
             std::cout << "uciok\n" << std::flush;
