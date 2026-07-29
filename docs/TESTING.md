@@ -115,8 +115,8 @@ The band follows **what the test asks**, not only the engine's strength.
 
 | The test is | Bounds | Stall limit |
 |---|---|---|
-| The first test of a new technique | `[0.00, 5.00]` | 4,000 games (~3.5h) |
-| A **retune** of a patch that already failed | `[0.00, 3.00]` | 12,000 games (~11h) |
+| The first test of a new technique | `[0.00, 5.00]` | 20,000 games (~18h) |
+| A **retune** of a patch that already failed | `[0.00, 3.00]` | 30,000 games (~27h) |
 
 **Why a retune earns the tighter band.** `elo1` is not a threshold the patch must
 clear -- H1 accepted means "better than `elo0`". But a retune already measured at
@@ -129,17 +129,25 @@ point and accepts H1 about 95% of the time.
 `[0, 5]` settles that in ~2-3 hours. Spending `[0, 3]` there buys no answer that
 `[0, 5]` would not already give.
 
-**The stall limit must follow the bounds.** Games to a verdict scale about
-`1/(elo1 - elo0)^2`, so `[0, 3]` costs roughly 2.8x more games. A `[0, 3]` test
-under a 4,000-game limit aborts before its LLR can leave `+-0.6`, which parks the
-exact patches the tighter band exists to resolve. A `[0, 5]` test under a
-12,000-game limit burns ~7 extra hours on a question already answered.
-`scripts/testqueue.sh` therefore derives the limit from `elo1` rather than
-setting it globally.
+**The stall limit must follow the bounds, and both must respect the sample size
+the effect actually needs.** Games to a verdict scale about `1/(elo1 - elo0)^2`,
+so `[0, 3]` costs roughly 2.8x more games. `scripts/testqueue.sh` derives the
+limit from `elo1`: **20,000 games at `[0, 5]`, 30,000 at `[0, 3]`.**
 
-**The honest ceiling:** resolving a +2 patch reliably needs more games than one
-machine supplies. 12,000 games is ~11 hours here. That is the wall OpenBench
-exists to break.
+**Those limits were 4,000 and 12,000 until 2026-07-29, and they were
+manufacturing false negatives.** The reference SPRTs for the techniques left in
+Phase 7 needed **15,000 to 130,000 games apiece**. Capture history is recorded in
+`CHANGELOG.md` as "rejected twice"; the two runs were 400 games and about 1,500,
+and Alexandria measures that same technique at +2.80 +/- 2.22 over 44,640 games
+at this exact time control. Both of our runs were **null results, not
+rejections**. A stall limit set below the sample size an effect needs does not
+save machine time -- it spends the machine on an answer that cannot be right.
+
+Read a stalled verdict as "this box cannot resolve this", never as "this patch
+does not work".
+
+**The honest ceiling:** even 30,000 games is short of what a +2 patch needs.
+That gap is the wall OpenBench exists to break, and Phase 7 reaches it.
 
 **Books:** `8moves_v3.epd` (balanced) under ~2800, `UHO_Lichess_4852_v1.epd`
 (biased, fewer draws, faster convergence) above it. The two harnesses now pick

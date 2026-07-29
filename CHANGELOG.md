@@ -720,6 +720,44 @@ Kill fastchess first and the script logs a verdict, appends the test to
 
 ---
 
+## 2026-07-29, laptop -- audit corrections and a rebuilt queue
+
+Ten review agents went over the merged engine and every unmerged branch. Four
+things recorded in this file were wrong, and they had been steering decisions.
+
+**Capture history was never rejected.** "Rejected twice" is not what happened.
+The runs were 400 games (-20 +/- 23) and about 1,500 (-8.69 +/- 33.62).
+Alexandria measures the same technique at +2.80 +/- 2.22 over 44,640 games at
+our exact time control. At our error bars a +3 effect is invisible: both results
+were null. The general lesson is bigger than this patch -- **the reference SPRTs
+for everything left in Phase 7 needed 15,000 to 130,000 games, and this project
+has been running 400 to 4,000.** STALL_GAMES rose 4,000 -> 20,000 and 12,000 ->
+30,000 as a result. Read a stalled verdict as "this box cannot resolve this".
+
+**Correction history has +-64 cp of authority, not +-32.** The comment, the
+commit message and this file all said 32. `correction()` sums TWO tables, each
+clamped to +-32. Against RfpMargin = 75 per ply that is nearly a full depth of
+margin, so the difference is not cosmetic.
+
+**The +33.13 should be quoted as ~20-25.** The pentanomial reconstructs exactly,
+so the harness was right and nothing was bundled -- but the SPRT accepted at 752
+pairs, near the earliest point LLR can cross 2.94, and a boundary crossing that
+early is biased high. It is also not Berserk's +2.70: P(observing +33 given a
+true +2.70) is about 1.4e-7. Elo gains scale roughly inversely with engine
+strength, and this engine's whole scale runs hot.
+
+**The 4.5% smaller tree was not a margin effect.** This file said "a more
+accurate static evaluation prunes better". The dominant channel is `improving`,
+a BOOLEAN: both sides of the comparison are now corrected values from different
+slots, so the table injects a differential rather than a cancelling offset. That
+boolean gates a full ply of LMR, doubles the LMP threshold, and shifts RFP by a
+whole RfpMargin.
+
+**The fifty-move explanation was also wrong**, and its correction is now on
+`phase7-rule50c` -- see that commit.
+
+---
+
 ## Updating this file
 
 Whoever completes a phase updates: the state table, a changelog entry with the

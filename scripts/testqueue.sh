@@ -49,39 +49,38 @@ FASTCHESS=./tools/fastchess.exe
 # point and accepts H1 about 95% of the time.
 #
 # [0, 3] costs roughly 2.8x more games, so it is spent only where it buys an
-# answer that [0, 5] would not give.  Retunes now: capthist (rejected twice),
-# rule50b (rejected at threshold 20).
+# answer that [0, 5] would not give.  Retunes now: capthist and rule50.
 #
-# timeman is a first test, not a retune, so it takes [0, 5].  Its branch was
-# rebuilt on current main rather than retuned -- the code had never been tested
-# at all, only carried on a branch that fell behind.  It is placed early for two
-# reasons: CLAUDE.md calls node-based time management the cheapest large win
-# available in blitz, and it is a loss candidate, because until 2026-07-29 the
-# code had never been linked or run.  Bench cannot guard it -- bench is
-# fixed-depth and never enters the time path -- so the SPRT is the only check
-# it will ever get.
+# ORDER IS BY MEASURED ELO PER MACHINE-HOUR, not by the roadmap.  Research on
+# 2026-07-29 established that the techniques left in this phase are worth +2 to
+# +5 each and that the reference SPRTs needed 15,000 to 130,000 games apiece --
+# so the order has to put the biggest expected effects first, because those are
+# the only ones one machine can actually resolve.
 #
-# Order is deliberate.  syzygy first because it was 72% of the way to a verdict
-# when it was stopped and is the most likely to pay; repetition next because the
-# syzygy result pushed games INTO the bucket it addresses (three-fold draws from
-# a winning position went 69 -> 88) and because it is the one that can lose --
-# it searches ~40% more nodes where it applies, so learn that before banking a
-# free win.  A test where both sides are the same binary and only an option
-# differs is the cleanest comparison there is: nothing else can explain it.
+# dodeeper leads: Alexandria measured +8.68 +/- 5.41 for it and this engine did
+# not have it at all.  dblext is second because its negative extensions shrink
+# the tree 13.6% at equal depth, which is the half that pays for singular
+# extensions' +28% cost.
+#
+# NOT queued, deliberately:
+#   ttpv     parked -- the exemption costs 12-58% more nodes here depending on
+#            constants, and the flat form already measured ~0.  Stockfish pays
+#            for it with a compensating term this search does not have.
+#   checkext no modern engine keeps check extensions; Stormphrax has a commit
+#            removing them.  Needs rewriting as an LMR term plus an SEE-gated
+#            ordering bonus before it is worth a slot.
+#   probcut  Berserk measured -0.15 +/- 4.40 at 8+0.08 and +4.34 +/- 3.00 at
+#            40+0.4.  It is an LTC feature; run it at the phase gate instead.
 QUEUE=(
-  "syzygy|rogatia-tb|rogatia-tb|0|5|option.SyzygyPath=C:/Users/minhp/syzygy/3-4-5"
-  "repetition|rogatia-rep|rogatia-base|0|5|"
-  "rule50|rogatia-r50|rogatia-base|0|5|"
-  "ttpv|rogatia-ttpv|rogatia-base|0|5|"
-  "timeman|rogatia-tm|rogatia-base|0|5|"        # first test, and a loss candidate
-  "checkext|rogatia-chkext|rogatia-base|0|5|"
-  "corrplexity|rogatia-cplx|rogatia-base|0|5|"
-  "capthist|rogatia-capt|rogatia-base|0|3|"     # retune: rejected twice
-  "rule50b|rogatia-r50b|rogatia-base|0|3|"      # retune: rejected at threshold 20
-  "conthist|rogatia-ch6|rogatia-base|0|5|"
-  "histage|rogatia-age|rogatia-base|0|5|"
-  "dblext|rogatia-dblx|rogatia-base|0|5|"
-  "probcut|rogatia-pc|rogatia-base|0|5|"
+  "dodeeper|rogatia-dd|rogatia-base|0|5|"        # +8.68 measured, best Elo/hour we lack
+  "dblext|rogatia-dblx2|rogatia-base|0|5|"       # negative extensions: 13.6% smaller tree
+  "hygiene|rogatia-hyg|rogatia-base|0|5|"        # four defect fixes, bundled
+  "histage|rogatia-age2|rogatia-base|0|5|"       # ~+5 measured (Berserk)
+  "timeman|rogatia-tm3|rogatia-base|0|5|"        # node fraction + best-move stability
+  "conthist|rogatia-ch6b|rogatia-base|0|5|"      # +2.81 measured
+  "capthist|rogatia-capt3|rogatia-base|0|3|"     # retune: +2.80 measured, needs the tight band
+  "corrplexity|rogatia-cplx2|rogatia-base|0|5|"  # merged in Stockfish at STC and LTC
+  "rule50|rogatia-r50c|rogatia-base|0|3|"        # retune of a -15.03
 )
 
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$SUMMARY"; }
@@ -145,16 +144,21 @@ for entry in "${QUEUE[@]}"; do
     # The limit follows the bounds, because the two cannot be set apart.
     #
     # Games to a verdict scale about 1/(elo1 - elo0)^2, so [0,3] costs roughly
-    # 2.8x more games than [0,5].  A [0,3] test under a 4,000-game limit aborts
-    # before its LLR can leave +-0.6, which parks the exact 2-4 Elo patches the
-    # tighter bounds exist to resolve.  A [0,5] test under a 12,000-game limit
-    # burns ~7 extra hours on a question already answered.
+    # 2.8x more games than [0,5].
     #
-    # 4,000 games is ~3.5 hours at ~1,100 games/hour; 12,000 is ~11 hours.  That
-    # 11 hours is the honest ceiling for one machine -- resolving a +2 patch
-    # reliably needs more games than this box supplies, and that is what
-    # OpenBench is for.  See docs/TESTING.md.
-    if [ "$elo1" = "3" ]; then STALL_GAMES=12000; else STALL_GAMES=4000; fi
+    # RAISED 4,000 -> 20,000 and 12,000 -> 30,000 on 2026-07-29.  The old limits
+    # were manufacturing false negatives.  The reference SPRTs for the techniques
+    # in this queue needed 15,000 to 130,000 games; capture history was recorded
+    # here as "rejected twice" on runs of 400 and about 1,500 games, and both
+    # were null results, not rejections.  A stall limit below the sample size the
+    # effect needs does not save machine time, it spends it on an answer that
+    # cannot be right.
+    #
+    # 20,000 games is ~18 hours at ~1,100 games/hour and 30,000 is ~27.  That is
+    # the honest ceiling for one machine, and it is still short of what a +2
+    # patch needs.  That gap is what OpenBench exists to close.  See
+    # docs/TESTING.md.
+    if [ "$elo1" = "3" ]; then STALL_GAMES=30000; else STALL_GAMES=20000; fi
     STALL_LLR=0.6
     monitor() {
         local pid=$1 lf=$2       # not `log`: that is the function name
