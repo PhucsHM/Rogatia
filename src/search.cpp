@@ -142,8 +142,13 @@ struct Worker {
     // [side to move][feature hash].  Pawn structure and own non-pawn material
     // are the two things the evaluation is most often wrong about in a
     // consistent direction.  The five Zobrist key sets exist for this.
-    int pawnCorr[COLOR_NB][CORRHIST_SIZE]    = {};
-    int nonPawnCorr[COLOR_NB][CORRHIST_SIZE] = {};
+    // int16, not int.  Every slot is clamped to +-CORRHIST_MAX == 8192, which
+    // fits with 2 bits to spare, and the pair of tables is walked by a hash of
+    // the position -- a scattered access with no locality to lose.  128 KB
+    // instead of 256 KB is the difference between fitting a core's L2 beside
+    // everything else the search wants there and not.
+    std::int16_t pawnCorr[COLOR_NB][CORRHIST_SIZE]    = {};
+    std::int16_t nonPawnCorr[COLOR_NB][CORRHIST_SIZE] = {};
 
     Move pv[MAX_PLY][MAX_PLY] = {};
     int  pvLen[MAX_PLY]       = {};
@@ -306,13 +311,17 @@ Score corrected_eval(Score raw, const Position& pos) {
                       Score(VALUE_TB_WIN_IN_MAX_PLY - 1));
 }
 
-void update_corr(int& slot, int diff, int depth) {
+void update_corr(std::int16_t& slot, int diff, int depth) {
     // Exponential moving average weighted by depth: a deep search's verdict
     // should move the estimate further than a shallow one's.
+    //
+    // The arithmetic stays in int: the largest term is 8192 * 255, so the sum
+    // cannot reach 2.2 million, and the clamp brings it back inside int16
+    // before it is stored.
     const int weight = std::min(depth + 1, 16);
     const int target = std::clamp(diff * CORRHIST_GRAIN, -CORRHIST_MAX, CORRHIST_MAX);
-    slot = std::clamp((slot * (256 - weight) + target * weight) / 256, -CORRHIST_MAX,
-                      CORRHIST_MAX);
+    slot = std::int16_t(std::clamp((slot * (256 - weight) + target * weight) / 256,
+                                   -CORRHIST_MAX, CORRHIST_MAX));
 }
 
 void update_correction(const Position& pos, int depth, int diff) {
