@@ -143,10 +143,14 @@ int main(int argc, char** argv) {
             dropScore = dropDup = 0;
         }
 
-        // Stride is computed between the passes, once survivors is known.
-        std::uint64_t stride = 1;
-        if (pass == 2 && target && survivors > target)
-            stride = survivors / target;
+        // Even spacing by accumulator, not by an integer stride.  survivors /
+        // target truncates -- 458M/160M is 2.86, which as a stride of 2 keeps
+        // 229M rather than 160M.  Adding `want` per survivor and emitting
+        // whenever the accumulator passes `have` keeps exactly `want` of them,
+        // evenly spread, for any ratio.
+        const std::uint64_t want = (target && survivors > target) ? target : survivors;
+        const std::uint64_t have = survivors ? survivors : 1;
+        std::uint64_t acc = 0;
 
         std::FILE* out = nullptr;
         if (pass == 2) {
@@ -157,7 +161,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        std::uint64_t kept = 0, seenSoFar = 0;
+        std::uint64_t kept = 0;
         for (int a = firstIn; a < argc; ++a) {
             std::FILE* f = std::fopen(argv[a], "rb");
             if (!f)
@@ -180,9 +184,13 @@ int main(int argc, char** argv) {
 
                     if (pass == 1)
                         ++survivors;
-                    else if (seenSoFar++ % stride == 0) {
-                        std::fwrite(r, 1, REC, out);
-                        ++kept;
+                    else {
+                        acc += want;
+                        if (acc >= have) {
+                            acc -= have;
+                            std::fwrite(r, 1, REC, out);
+                            ++kept;
+                        }
                     }
                 }
             }
@@ -195,9 +203,8 @@ int main(int argc, char** argv) {
                          (unsigned long long) dropScore, (unsigned long long) dropDup,
                          (unsigned long long) survivors);
             if (target && survivors > target)
-                std::fprintf(stderr, "thinning   keeping 1 in %llu to reach %llu\n",
-                             (unsigned long long) (survivors / target),
-                             (unsigned long long) target);
+                std::fprintf(stderr, "thinning   keeping %llu of %llu, evenly spaced\n",
+                             (unsigned long long) target, (unsigned long long) survivors);
         } else {
             std::fclose(out);
             std::fprintf(stderr, "written    %llu positions to %s\n",
