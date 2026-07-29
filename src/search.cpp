@@ -137,6 +137,12 @@ struct Worker {
     int pawnCorr[COLOR_NB][CORRHIST_SIZE]    = {};
     int nonPawnCorr[COLOR_NB][CORRHIST_SIZE] = {};
 
+    // [piece moved][destination][piece taken].  Captures need their own table:
+    // what matters about a quiet move is where it goes, what matters about a
+    // capture is what it takes, and MVV-LVA alone cannot learn that a
+    // particular capture keeps losing.  14 KB, so unlike contHist it is free.
+    std::int16_t captHist[PIECE_NB][SQUARE_NB][PIECE_TYPE_NB] = {};
+
     Move pv[MAX_PLY][MAX_PLY] = {};
     int  pvLen[MAX_PLY]       = {};
 
@@ -274,6 +280,15 @@ void update_cont_hist(const Stack* ss, Piece pc, Square to, int bonus) {
             update_history(*slot, bonus);
 }
 
+// The capture-history slot for `m`.  Must be taken BEFORE make_move, since it
+// reads the moving piece off the board.  En passant takes a pawn while leaving
+// the destination empty, so the victim is spelled out rather than read.
+std::int16_t* capt_hist(const Position& pos, Move m) {
+    const PieceType victim = (type_of(m) == EN_PASSANT) ? PAWN
+                                                        : type_of(pos.piece_on(to_sq(m)));
+    return &W.captHist[pos.piece_on(from_sq(m))][to_sq(m)][victim];
+}
+
 // ------------------------------------------------- correction history ------
 
 std::size_t corr_index(Key k) { return std::size_t(k) & (CORRHIST_SIZE - 1); }
@@ -405,7 +420,19 @@ int score_move(const Position& pos, Move m, Move ttMove, const Stack* ss) {
 
         // A small negative threshold keeps roughly-even trades in the good
         // bucket; only clearly losing captures get pushed behind the quiets.
-        return (see_ge(pos, m, -20) ? SCORE_GOODCAP : SCORE_BADCAP) + value;
+        // Scaled down, not raw.  Not crossing the good/bad bucket is the easy
+        // invariant and it is not the one that matters: MVV-LVA's `value` spans
+        // roughly 700..14300, while capture history spans +/-16384, so added
+        // raw the learned term simply overrides the material term and a
+        // well-remembered pawn capture outranks taking a queen.  Raw measured
+        // -20 +/- 23 over 400 games.  Divided, history breaks ties between
+        // captures of similar material instead of replacing the ranking: at the
+        // default the term is +/-2048, under the 3520 gap between a pawn and a
+        // knight, so it reorders the near-equal cases and leaves the rest.
+        // CaptHistDiv == 0 removes the term entirely, so the feature has an
+        // inert setting and bench can be proved to return to base.
+        return (see_ge(pos, m, -20) ? SCORE_GOODCAP : SCORE_BADCAP) + value
+             + (tunable::CaptHistDiv ? *capt_hist(pos, m) / tunable::CaptHistDiv : 0);
     }
 
     if (m == ss->killers[0])
@@ -772,6 +799,10 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     Move quietsTried[MAX_QUIETS_TRACKED];
     int  quietCount = 0;
 
+    // Slots, not moves: the piece and victim are only readable before make_move.
+    std::int16_t* noisyTried[MAX_QUIETS_TRACKED];
+    int           noisyCount = 0;
+
     for (int i = 0; i < count; ++i) {
         pick_next(moves, scores, count, i);
         const Move m = moves[i];
@@ -827,6 +858,13 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
 
         if (isQuiet && quietCount < MAX_QUIETS_TRACKED)
             quietsTried[quietCount++] = m;
+
+        // Taken now, while the victim is still on the board.  Used twice below:
+        // once to reduce a well-performing capture less, once to reward or
+        // punish it at the cutoff.
+        std::int16_t* const captSlot = isQuiet ? nullptr : capt_hist(pos, m);
+        if (captSlot && noisyCount < MAX_QUIETS_TRACKED)
+            noisyTried[noisyCount++] = captSlot;
 
         // Singular extension.  The table says this move is at least tt.score;
         // ask whether anything ELSE reaches nearly that, by searching the same
@@ -902,6 +940,8 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
                         if (const std::int16_t* slot = cont_hist(ss - off, ss->movedPiece, to_sq(m)))
                             hist += *slot;
                     r -= hist * LMR_SCALE / tunable::LmrHistDiv;
+                } else if (captSlot && tunable::LmrCaptHistDiv) {
+                    r -= *captSlot * LMR_SCALE / tunable::LmrCaptHistDiv;
                 }
 
                 newDepth = std::clamp(depth + extension - (r / LMR_SCALE), 1, fullDepth);
@@ -953,13 +993,14 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
                 }
 
                 if (score >= beta) {
+                    const int bonus = history_bonus(depth);
+
                     if (isQuiet) {
                         if (m != ss->killers[0]) {
                             ss->killers[1] = ss->killers[0];
                             ss->killers[0] = m;
                         }
 
-                        const int bonus = history_bonus(depth);
                         update_history(W.history[us][from_sq(m)][to_sq(m)], bonus);
                         update_cont_hist(ss, ss->movedPiece, to_sq(m), bonus);
 
@@ -972,7 +1013,26 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
                             update_history(W.history[us][from_sq(q_)][to_sq(q_)], -bonus);
                             update_cont_hist(ss, pos.piece_on(from_sq(q_)), to_sq(q_), -bonus);
                         }
+                    } else if (captSlot) {
+                        update_history(*captSlot, bonus);
                     }
+
+                    // Captures that were tried first and did not cut were
+                    // ordered too high, whether or not the move that finally
+                    // cut was itself a capture.
+                    for (int n = 0; n < noisyCount; ++n)
+                        if (noisyTried[n] != captSlot)
+                            // A smaller malus than the quiet one, deliberately.
+                            // Good captures are ordered above killers, so at
+                            // almost every cut node where a QUIET cuts, every
+                            // capture tried first takes a full malus. Malus
+                            // traffic therefore dwarfs bonus traffic and popular
+                            // capture slots pin near -MAX_HISTORY. Ordering
+                            // absorbs that, but LmrCaptHistDiv turns a pinned
+                            // slot into extra reduction on perfectly reasonable
+                            // captures everywhere.
+                            update_history(*noisyTried[n], -bonus / tunable::CaptMalusDiv);
+
                     break;
                 }
                 alpha = score;
@@ -1181,6 +1241,7 @@ void clear() {
     std::memset(W.contHist, 0, sizeof(W.contHist));
     std::memset(W.pawnCorr, 0, sizeof(W.pawnCorr));
     std::memset(W.nonPawnCorr, 0, sizeof(W.nonPawnCorr));
+    std::memset(W.captHist, 0, sizeof(W.captHist));
     W.rootBestMove = MOVE_NONE;
     W.rootScore    = VALUE_NONE;
 }

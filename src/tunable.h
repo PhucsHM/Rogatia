@@ -35,6 +35,9 @@
     X(LmrNoisyDiv,    3277,  1000,   6000)      \
     X(LmrCutNode,     2048,     0,   4096)      \
     X(LmrHistDiv,    24576,  2048,  65536)      \
+    X(LmrCaptHistDiv,16384,     0,  65536)      \
+    X(CaptHistDiv,       2,     0,     64)      \
+    X(CaptMalusDiv,      2,     1,      8)      \
     X(IirDepth,          4,     2,      8)      \
     X(SingularDepth,     8,     4,     12)      \
     X(SingularMargin,   32,     8,    128)      \
