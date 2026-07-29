@@ -633,7 +633,28 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     TTData tt;
     const bool ttHit = TT.probe(pos.key(), ss->ply, tt);
 
+    // No table cutoff once the fifty-move counter is high.
+    //
+    // The counter is NOT part of the Zobrist key, so one entry serves the same
+    // arrangement of pieces at counter 3 and at counter 93 -- and near the draw
+    // those are not the same position at all.  A score stored when there were
+    // ninety plies left to work with is simply wrong when there are seven, and
+    // the search takes it as proven and returns.
+    //
+    // 90, which is Stockfish's published threshold, not a number invented here.
+    // `phase7-rule50c` used 96; six plies of window is not worth diverging from
+    // a value that has been tested by everyone.
+    //
+    // Rule50TtCap == 101 is inert: rule50 can never reach it, so every cutoff
+    // survives.  That is the off switch.
+    //
+    // Split out of `phase7-rule50c` on 2026-07-29 and tested ALONE.  That branch
+    // bundled this with an eval taper that fires from counter 0 -- a ~10% haircut
+    // on every score at an ordinary counter of 20, against margins in tunable.h
+    // that are all calibrated to the undamped scale.  Bundled, a null result
+    // could not say which half was wrong.
     if (!PvNode && !excluded && ttHit && tt.depth >= depth
+        && pos.rule50_count() < tunable::Rule50TtCap
         && (tt.bound == BOUND_EXACT || (tt.bound == BOUND_LOWER && tt.score >= beta)
             || (tt.bound == BOUND_UPPER && tt.score <= alpha)))
         return tt.score;
