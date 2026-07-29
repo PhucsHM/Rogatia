@@ -25,6 +25,11 @@
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
+# Sourced only for TB_OPT -- the Syzygy option every match script must pass.
+# The settings below deliberately override lib.sh's: this queue pins its own
+# time control and concurrency and does not want the shared defaults.
+. "$(dirname "$0")/lib.sh"
+
 OUT=sprt-results
 STATE=$OUT/queue-state
 SUMMARY=$OUT/queue-summary.log
@@ -73,6 +78,7 @@ FASTCHESS=./tools/fastchess.exe
 #            40+0.4.  It is an LTC feature; run it at the phase gate instead.
 QUEUE=(
   "dodeeper|rogatia-dd|rogatia-base|0|5|"        # +8.68 measured, best Elo/hour we lack
+  "rule50tt|rogatia-r50tt|rogatia-base|0|5|"     # TT guard ONLY, taper split off
   "dblext|rogatia-dblx2|rogatia-base|0|5|"       # negative extensions: 13.6% smaller tree
   "hygiene|rogatia-hyg|rogatia-base|0|5|"        # four defect fixes, bundled
   "histage|rogatia-age2|rogatia-base|0|5|"       # ~+5 measured (Berserk)
@@ -80,8 +86,43 @@ QUEUE=(
   "conthist|rogatia-ch6b|rogatia-base|0|5|"      # +2.81 measured
   "capthist|rogatia-capt3|rogatia-base|0|3|"     # retune: +2.80 measured, needs the tight band
   "corrplexity|rogatia-cplx2|rogatia-base|0|5|"  # merged in Stockfish at STC and LTC
-  "rule50|rogatia-r50c|rogatia-base|0|3|"        # retune of a -15.03
 )
+
+# rule50c was SPLIT on 2026-07-29 and only half of it is queued.
+#
+# It bundled two unrelated changes. The eval taper (`v - v*rule50/199`) fires
+# from counter 0, so at an ordinary counter of 20 it is a ~10% haircut on every
+# score -- and all 33 margins in tunable.h are calibrated to the undamped scale,
+# so it silently re-tunes the whole search's pruning rather than fixing anything
+# about the fifty-move rule. The TT guard is independent and has a clean
+# mechanism: the fifty-move counter is not in the Zobrist key, so one entry
+# serves the same position at counter 3 and at counter 93, and near the draw
+# those are not the same position.
+#
+# Bundled, a null result at [0, 3] costs 30,000 games and cannot say which half
+# was wrong. The guard alone is a real question, so it gets [0, 5]. The taper
+# stays parked on `phase7-rule50c`.
+
+# ---- half selection: two machines, one queue file -----------------------
+#
+# The boxes must never run the SAME test -- fastchess has no distributed mode
+# and merging two PGN sets breaks SPRT's sequential stopping rule. Split the
+# list instead and let each machine drain its own half.
+#
+#   HALF=a bash scripts/testqueue.sh     # first half
+#   HALF=b bash scripts/testqueue.sh     # second half
+#   bash scripts/testqueue.sh            # everything, one machine
+HALF=${HALF:-}
+if [ -n "$HALF" ]; then
+    _mid=$(( (${#QUEUE[@]} + 1) / 2 ))
+    case "$HALF" in
+        a) QUEUE=("${QUEUE[@]:0:$_mid}") ;;
+        b) QUEUE=("${QUEUE[@]:$_mid}") ;;
+        *) echo "HALF must be 'a' or 'b'" >&2; exit 2 ;;
+    esac
+    STATE=$OUT/queue-state-$HALF
+    SUMMARY=$OUT/queue-summary-$HALF.log
+fi
 
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$SUMMARY"; }
 
@@ -114,6 +155,13 @@ for entry in "${QUEUE[@]}"; do
     fi
 
     wait_for_free_machine
+
+    # Both binaries, every test. A patch measured against a base that failed to
+    # load tablebases is measuring the tablebases, not the patch.
+    if ! verify_tb "./$dev" || ! verify_tb "./$base"; then
+        log "$name : SKIPPED -- tablebases did not load; fix that before testing"
+        continue
+    fi
 
     log "$name : starting -- $dev vs $base, tc=$TC, bounds [$elo0, $elo1]"
 
@@ -194,7 +242,7 @@ for entry in "${QUEUE[@]}"; do
             $FASTCHESS \
                 -engine cmd="./$dev" name=dev $extra \
                 -engine cmd="./$base" name=base \
-                -each tc="$TC" option.Hash="$HASH" option.Threads=1 \
+                -each tc="$TC" option.Hash="$HASH" option.Threads=1 $TB_OPT \
                 -openings file="$BOOK" format=epd order=random \
                 -sprt elo0="$elo0" elo1="$elo1" alpha=0.05 beta=0.05 model=normalized \
                 -rounds 100000 -games 2 -repeat \

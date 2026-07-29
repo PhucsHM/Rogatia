@@ -68,13 +68,17 @@ ANCHORS_WINDOWS="alexandria-3.5:3405:13 clover-3.1:3399:11 smallbrain-6.0:3361:1
 OUT=$ROOT/sprt-results/gauntlet-$(date +%Y%m%d-%H%M%S)
 mkdir -p "$OUT"
 
+# Prove the tablebases actually load before spending hours. A rating measured
+# without them is ~24 Elo low and there is no way to tell after the fact.
+verify_tb "$ENGINE" || exit 1
+
 for a in $ANCHORS; do
 	name=${a%%:*}
 	echo "== $name ($GAMES games, tc=$TC, concurrency=$CONCURRENCY)"
 	"$FASTCHESS" \
 		-engine cmd="$ENGINE" name=Rogatia \
 		-engine cmd="$(bin "$ROOT/tools/engines/$name")" name="$name" \
-		-each tc="$TC" option.Hash="$HASH" option.Threads=1 \
+		-each tc="$TC" option.Hash="$HASH" option.Threads=1 $TB_OPT \
 		-openings file="$BOOK" format=epd order=random \
 		-rounds $(( GAMES / 2 )) -games 2 -repeat \
 		-concurrency "$CONCURRENCY" -recover \

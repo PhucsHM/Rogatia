@@ -30,7 +30,7 @@ echo "dev=$DEV base=$BASE tc=$TC concurrency=$CONCURRENCY bounds=[$ELO0, $ELO1] 
 "$FASTCHESS" \
 	-engine cmd="$(bin "$DEV")"  name=dev \
 	-engine cmd="$(bin "$BASE")" name=base \
-	-each tc="$TC" option.Hash="$HASH" option.Threads=1 \
+	-each tc="$TC" option.Hash="$HASH" option.Threads=1 $TB_OPT \
 	-openings file="$BOOK" format=epd order=random \
 	-sprt elo0="$ELO0" elo1="$ELO1" alpha=0.05 beta=0.05 model=normalized \
 	-rounds "${ROUNDS:-100000}" -games 2 -repeat \
