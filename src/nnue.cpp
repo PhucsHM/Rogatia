@@ -60,9 +60,28 @@ bool load(const char* path) {
     if (!f)
         return false;
 
+    // Check the size FIRST.  The reads below only prove the file is at least
+    // big enough, so a net for a different architecture -- a Phase 8
+    // (768 -> 1024) file, say -- loads "successfully" and then evaluates as
+    // plausible garbage.  That is the silent-failure class this file exists to
+    // avoid, and the header comment promised an assert that was never written.
+    std::fseek(f, 0, SEEK_END);
+    const long size = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
+
+    // Weights, then up to 63 bytes of padding: bullet pads the file with the
+    // ASCII string "bullet" repeated to a 64-byte boundary.
+    constexpr long PAYLOAD = long(sizeof(std::int16_t)) * (INPUTS * HIDDEN + HIDDEN + 2 * HIDDEN + 1);
+    if (size < PAYLOAD || size >= PAYLOAD + 64) {
+        std::fclose(f);
+        std::fprintf(stderr,
+                     "info string net %s is %ld bytes, expected %ld -- wrong architecture?\n",
+                     path, size, PAYLOAD);
+        return false;
+    }
+
     // Read the sections individually rather than the struct in one go: the file
-    // ends with 62 bytes of padding (the ASCII string "bullet" repeated to a
-    // 64-byte boundary) which is not part of any weight.
+    // ends with padding which is not part of any weight.
     const bool ok = std::fread(Net.l0w, sizeof(std::int16_t), INPUTS * HIDDEN, f)
                         == INPUTS * HIDDEN
                  && std::fread(Net.l0b, sizeof(std::int16_t), HIDDEN, f) == HIDDEN

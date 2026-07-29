@@ -1209,12 +1209,14 @@ void go(Position& pos, const Limits& limits) {
     const Move tbMove = probe_root(pos);
     const int maxDepth = limits.depth ? std::min(limits.depth, MAX_PLY - 2) : MAX_PLY - 2;
 
-    if (tbMove != MOVE_NONE) {
+    if (tbMove != MOVE_NONE && !limits.infinite) {
         W.rootBestMove = tbMove;
+        W.rootScore    = VALUE_TB;   // or the previous search's score leaks out
         W.tbHits       = 1;
-        std::printf("info depth %d score cp %d nodes 0 tbhits 1 time %lld pv %s\n",
-                    maxDepth, int(VALUE_TB), (long long) W.elapsed(),
-                    move_to_uci(tbMove).c_str());
+        // depth 1, not maxDepth: a table hit searched nothing, and printing
+        // "depth 244" lands in the PGN of every won tablebase ending.
+        std::printf("info depth 1 score cp %d nodes 0 tbhits 1 time %lld pv %s\n",
+                    int(VALUE_TB), (long long) W.elapsed(), move_to_uci(tbMove).c_str());
         std::fflush(stdout);
     } else if (W.rootBestMove != MOVE_NONE)
         iterative_deepening(pos, maxDepth);

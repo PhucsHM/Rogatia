@@ -26,6 +26,23 @@ int main(int argc, char** argv) {
     if (!rogatia::nnue::load(netUsed))
         std::fprintf(stderr, "info string NNUE load FAILED for %s -- using the PSQT fallback\n",
                      netUsed);
+    else {
+        // Sanity-check the eval SCALE against the net that just loaded.  SCALE
+        // is a property of the trained net, not of this code, so it cannot be
+        // asserted -- but every pruning margin in tunable.h is calibrated to it,
+        // and an inflated eval silently makes all of them more aggressive.
+        // Phase 6 hit exactly that: a net trained at wdl=0.75 came out at about
+        // twice the search scale, and nothing said a word.  The start position
+        // is close to equal, so a large score here means the scale moved.
+        rogatia::Position start;
+        start.set("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        const int v = int(rogatia::nnue::evaluate(start));
+        if (v < -150 || v > 150)
+            std::fprintf(stderr,
+                         "info string net evaluates the start position at %d cp -- the eval scale "
+                         "may have moved, re-check the pruning margins in tunable.h\n",
+                         v);
+    }
 #endif
 
     // `rogatia bench [depth]` is how OpenBench measures the fingerprint: run
