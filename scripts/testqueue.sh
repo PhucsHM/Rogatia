@@ -223,11 +223,38 @@ for entry in "${QUEUE[@]}"; do
     # docs/TESTING.md.
     if [ "$elo1" = "3" ]; then STALL_GAMES=30000; else STALL_GAMES=20000; fi
     STALL_LLR=0.6
+    # Take a resume snapshot, but NEVER overwrite a good one with a bad one.
+    #
+    # fastchess rewrites config.json continuously while the match runs, so a
+    # copy taken mid-write is truncated JSON.  The old code copied straight over
+    # the snapshot, which meant an unlucky moment destroyed the only record of
+    # the games played -- and the resume would silently start from zero.  That
+    # is the exact failure that cost a whole syzygy run on 2026-07-28.
+    #
+    # Copy to a temp, check it, and only then promote.  The check is the last
+    # byte being `}`: no dependency on python or jq, and a truncated write
+    # essentially never ends that way.
+    snapshot() {
+        [ -f config.json ] || return 0
+        cp -f config.json "$resume.tmp" 2>/dev/null || return 0
+        if [ "$(tail -c 1 "$resume.tmp" 2>/dev/null)" = "}" ]; then
+            mv -f "$resume.tmp" "$resume" 2>/dev/null
+        else
+            rm -f "$resume.tmp" 2>/dev/null
+        fi
+    }
+
     monitor() {
         local pid=$1 lf=$2       # not `log`: that is the function name
+        local tick=0
         while kill -0 "$pid" 2>/dev/null; do
-            [ -f config.json ] && cp -f config.json "$resume" 2>/dev/null
-            sleep 60
+            # Every 15s, not every 60s.  This interval IS the cost of stopping:
+            # whatever has been played since the last good snapshot is lost, and
+            # the laptop gets carried around mid-queue.
+            snapshot
+            sleep 15
+            tick=$((tick + 1))
+            [ $((tick % 4)) -eq 0 ] || continue
             local g llr
             g=$(grep -E '^Games:' "$lf" 2>/dev/null | tail -1 | grep -oE '[0-9]+' | head -1)
             llr=$(grep -E '^LLR:' "$lf" 2>/dev/null | tail -1 | awk '{print $2}')
@@ -269,6 +296,12 @@ for entry in "${QUEUE[@]}"; do
         mon_pid=$!
         wait "$fc_pid"
         kill "$mon_pid" 2>/dev/null
+
+        # One last snapshot after the match ends. The monitor died with it, so
+        # without this the resume file is up to 15 seconds stale -- and if the
+        # match ended because someone stopped it before moving the machine,
+        # those are exactly the games worth keeping.
+        snapshot
 
         # NO `|| echo 0` here. grep -c already prints 0 when it matches
         # nothing, and EXITS 1 doing so -- so the fallback fired too and the
