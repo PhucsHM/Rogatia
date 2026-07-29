@@ -136,7 +136,12 @@ done_already() { [ -f "$STATE" ] && grep -qxF "$1" "$STATE"; }
 # distort each other's timing and both results become worthless.
 wait_for_free_machine() {
     local announced=0
-    while pgrep -f fastchess >/dev/null 2>&1 || tasklist 2>/dev/null | grep -qi fastchess; do
+    # pgrep -x, matching the PROCESS NAME, never -f.  -f matches the whole
+    # command line, so any shell that merely MENTIONS fastchess counts as a
+    # running match -- including an ssh session checking on this very queue.
+    # That is not hypothetical: it deadlocked half A here on 2026-07-29, and the
+    # queue sat waiting for a machine that was already free.
+    while pgrep -x fastchess >/dev/null 2>&1 || tasklist 2>/dev/null | grep -qi 'fastchess\.exe'; do
         [ $announced -eq 0 ] && { log "a match is already running; waiting for the machine"; announced=1; }
         sleep 60
     done
