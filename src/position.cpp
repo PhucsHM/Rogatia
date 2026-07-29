@@ -44,7 +44,11 @@ void Position::clear() {
     gamePly_    = 0;
     st_         = BoardState{};
     history_.clear();
-    history_.reserve(MAX_PLY + 64);
+    // Game plies PLUS search plies: uci.cpp replays the whole move list with
+    // make_move before every search, so a 130-move game already needs 260 + 246
+    // = 506.  The old MAX_PLY + 64 = 310 meant a long game paid a silent
+    // reallocation and a ~57 KB copy in the middle of a search.
+    history_.reserve(2 * MAX_PLY + 1024);
 }
 
 bool Position::set(const std::string& fen) {

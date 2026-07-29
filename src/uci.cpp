@@ -34,6 +34,11 @@ struct Engine {
     int hashMb       = HASH_DEFAULT;
     int moveOverhead = MOVE_OVERHEAD_DEFAULT;
 
+    // Remembered so `bench` can put it back.  run_bench calls tb_free() to keep
+    // the node count identical with and without tablebases on disk, which would
+    // otherwise silently leave the rest of the session playing without them.
+    std::string syzygyPath;
+
     void join() {
         if (searching.joinable())
             searching.join();
@@ -160,6 +165,7 @@ void cmd_setoption(Engine& e, std::istringstream& is) {
         // which is what keeps `bench` identical on a machine with tablebases
         // and one without.  Never set it before a bench.
         tb_free();
+        e.syzygyPath = value;
         if (!value.empty() && value != "<empty>" && tb_init(value.c_str()) && TB_LARGEST > 0)
             std::cout << "info string syzygy: " << TB_LARGEST
                       << "-piece tablebases from " << value << '\n' << std::flush;
@@ -228,6 +234,10 @@ void uci_loop() {
                 depth = parse_int(token, depth);
             run_bench(depth);
             TT.resize(std::size_t(e.hashMb));  // bench forces its own size back
+            // ...and it calls tb_free().  Put the tablebases back, or the rest
+            // of the session plays without them and never says so.
+            if (!e.syzygyPath.empty() && e.syzygyPath != "<empty>")
+                tb_init(e.syzygyPath.c_str());
         } else if (token == "datagen") {
             // datagen <output> <positions> [seed] [nodes]
             e.join();

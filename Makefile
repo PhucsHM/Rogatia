@@ -76,7 +76,11 @@ else ifeq ($(build),release)
 	CXXFLAGS += -O3 -march=x86-64-v3 -mtune=generic -DNDEBUG $(LTOFLAGS) -static
 	LDFLAGS  += $(LTOFLAGS) -static
 else ifeq ($(build),debug)
-	CXXFLAGS += -O0 -g3 -fsanitize=address,undefined -fno-omit-frame-pointer
+	# -march=native so __BMI2__ is defined and the PEXT indexer is the one that
+	# gets checked.  Without it this build takes the black-magic path, and the
+	# verify_slider_tables() assert -- the only build that runs it, since native
+	# and release both carry -DNDEBUG -- has never once compared PEXT to anything.
+	CXXFLAGS += -O0 -g3 -march=native -fsanitize=address,undefined -fno-omit-frame-pointer
 	LDFLAGS  += -fsanitize=address,undefined
 endif
 
