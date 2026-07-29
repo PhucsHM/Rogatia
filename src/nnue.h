@@ -32,7 +32,13 @@ struct alignas(64) Accumulator {
 bool load(const char* path);
 
 // True once a network is loaded and nnue::evaluate may be called.
-bool loaded();
+//
+// Inline over an extern flag, not an out-of-line function.  This is read before
+// EVERY make_move (search.cpp) and the Makefile falls back to no LTO when the
+// toolchain lacks it -- in that build an out-of-line definition is a real call
+// on the hottest path in the engine, for a byte load.
+extern bool NetLoaded;
+inline bool loaded() { return NetLoaded; }
 
 // Builds an accumulator from scratch.  O(pieces * HIDDEN).
 void refresh(const Position& pos, Accumulator& acc);

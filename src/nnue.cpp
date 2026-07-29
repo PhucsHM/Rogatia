@@ -39,7 +39,6 @@ struct alignas(64) Network {
 };
 
 Network Net;
-bool    Loaded = false;
 
 // Index of (colour, pieceType, square) in the 768 inputs, seen from `pov`.
 // Both the piece colour and the square are mirrored, so "our pawn on the second
@@ -60,8 +59,10 @@ int screlu(std::int16_t x) {
 
 }  // namespace
 
+bool NetLoaded = false;
+
 bool load(const char* path) {
-    Loaded = false;
+    NetLoaded = false;
     if (!path || !*path)
         return false;
 
@@ -98,12 +99,10 @@ bool load(const char* path) {
                  && std::fread(&Net.l1b, sizeof(std::int16_t), 1, f) == 1;
 
     std::fclose(f);
-    Loaded = ok;
+    NetLoaded = ok;
     return ok;
 }
 
-
-bool loaded() { return Loaded; }
 
 void refresh(const Position& pos, Accumulator& acc) {
     for (Color pov : {WHITE, BLACK})
