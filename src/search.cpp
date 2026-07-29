@@ -844,10 +844,28 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         // left could plausibly win back.  Quiets are given a wider allowance --
         // a quiet move that hangs a piece is usually still a real idea, whereas
         // a capture that loses material rarely is.
-        if (!rootNode && best > -VALUE_TB_WIN_IN_MAX_PLY && depth <= tunable::SeeDepth
-            && !see_ge(pos, m, -(isQuiet ? tunable::SeeQuietMargin : tunable::SeeNoisyMargin)
-                                   * depth))
-            continue;
+        if (!rootNode && best > -VALUE_TB_WIN_IN_MAX_PLY && depth <= tunable::SeeDepth) {
+            const int threshold =
+                -(isQuiet ? tunable::SeeQuietMargin : tunable::SeeNoisyMargin) * depth;
+
+            // score_move already ran see_ge(m, -20) on every capture and
+            // promotion and put the moves that passed above SCORE_GOODCAP.
+            // see_ge is monotone in its threshold, so a move that beat -20
+            // beats anything at or below -20 and can never be pruned here --
+            // the second call would redo a full exchange for a verdict already
+            // in hand.  scores[i] tracks moves[i] through pick_next, which the
+            // history-pruning test above already depends on.
+            //
+            // Both halves of the guard are load-bearing.  SeeNoisyMargin is
+            // tunable down to 10, where the threshold at depth 1 is -10 and the
+            // implication runs the wrong way; and the TT move sits above
+            // SCORE_GOODCAP without any SEE having been run on it.
+            const bool seeAlreadyPassed = !isQuiet && threshold <= -20
+                                       && scores[i] >= SCORE_GOODCAP && scores[i] < SCORE_TT;
+
+            if (!seeAlreadyPassed && !see_ge(pos, m, threshold))
+                continue;
+        }
 
         if (isQuiet && quietCount < MAX_QUIETS_TRACKED)
             quietsTried[quietCount++] = m;
