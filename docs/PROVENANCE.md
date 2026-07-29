@@ -86,6 +86,30 @@ from prose descriptions and from Stockfish's *comment* about what the rule is,
 not from its code. Both were then verified against this engine's own behaviour
 rather than against a reference implementation's output.
 
+## Performance work -- 2026-07-29
+
+Speed only.  Every item here is **bit-identical**: same tree, same node count,
+less time.  That is the standard this project holds them to, and it is why none
+of them owes an SPRT -- the gate is `bench` printing the SAME number, not a
+better one.
+
+| Change | Source | Note |
+|---|---|---|
+| int32 multiply in NNUE inference | Own analysis | The int64 accumulator added the same day was correct but widened BEFORE the multiply. The product provably fits int32 (65,025 x 32,767); only the sum needs 64 bits |
+| `alignas(64)` on `Network` | Own analysis | Natural alignment was 2. Every feature column is 512 bytes apart, so all of them inherit the base's residue |
+| Fused accumulator update | Shape is universal; the mod-2^16 argument is ours | Bit-identical because storing through `int16_t` is reduction mod 2^16, which commutes with addition -- so regrouping is safe whether or not the accumulator wraps |
+| `nnue::loaded()` inline | Own analysis | Out-of-line, it is a real call per `make_move` in the non-LTO fallback build |
+| Null-move accumulator pointer | CPW: Incremental Updates; the shape is universal | A null move changes no feature, so the child shares the parent's accumulator rather than copying 1 KB |
+
+**Not taken, and why.** Hand-written SIMD for the SCReLU multiply-accumulate is
+the largest remaining item (~5-12%), and it stays out for now. The 128-bit form
+needs `|l1w| <= 128`; both nets measure **127**, so they pass with one unit of
+margin and a future net could be refused at load. That is a decision about
+future-net brittleness, not a free win, so it waits for a measurement rather
+than an argument.
+
+---
+
 ## Tooling written for this project
 
 | Script | Purpose |

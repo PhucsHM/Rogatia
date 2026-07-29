@@ -869,6 +869,90 @@ sit so far above.
 
 ---
 
+## 2026-07-29 -- performance pass, and what six review agents found
+
+Six agents went over the engine: four hunting speed, two re-reviewing the day's
+own commits. The framing that made it productive: **a speedup that keeps the
+node count bit-identical is free Elo and owes no SPRT.** Same tree, less time.
+The gate for every item below is `bench` printing the SAME number, not a better
+one -- a bench delta means the patch is wrong, not that it worked.
+
+### Landed (branch `perf-nnue-cheap`, one commit per fix)
+
+| Change | Est. nps |
+|---|---|
+| int32 multiply in `nnue::evaluate` | 2-6% |
+| `alignas(64)` on `Network` | 0.5-2% |
+| Fused accumulator update, 1 KB copy removed | 3-8% |
+| Null-move accumulator pointer | 1-2% |
+| `nnue::loaded()` inline | 0-2% |
+
+**One of these was a self-inflicted regression.** The int64 accumulator added
+that morning fixed a real overflow but widened BEFORE the multiply, making it a
+64-bit multiply per term and suppressing vectorisation. The overflow was only
+ever in the sum. Same safety, no cost, by moving one cast.
+
+### Found and not yet done
+
+- **`zobrist::Psq` is set-major.** Proven from disassembly: the five keys for one
+  (piece, square) sit **8 KB apart -- five cache lines and five pages** -- and
+  `update_keys` runs 4-6 times per `make_move`. Transposing puts them in 40
+  contiguous bytes. 1.5-3%. **Keep the fill loop order EXACTLY as-is or every
+  key changes.**
+- **`lmr_base()` does two real `idiv`s per late move**, because `tunable::` are
+  mutable globals nothing can constant-fold. 8,192 distinct results -- table it.
+  2-5%.
+- **Redundant SEE.** `score_move` already ran `see_ge(m, -20)`; the pruning test
+  re-runs SEE on the same move. Monotonicity makes the first verdict imply the
+  second. Found independently by two agents, both deriving the same guard:
+  `SeeNoisyMargin` is SPSA-tunable to 10, where the implication breaks.
+- Correction tables are `int` where values are clamped to +-8192 (two agents).
+- `see_ge`'s x-ray refresh recomputes the slider union every iteration and does
+  a magic lookup even when no slider of that class points at the square.
+
+### Two latent bugs, neither about speed
+
+- **`history_` is reserved for 310 entries and a 130-move game needs 506.**
+  `uci.cpp` replays the whole game before every search, so this is game plies
+  PLUS search plies. Today it costs a silent reallocation and a ~57 KB copy mid
+  search. If anyone converts it to a fixed array without resizing, it becomes a
+  buffer overflow.
+- **`make release` ships the PEXT path to hardware where PEXT is slow.** BMI2 is
+  part of `x86-64-v3`, which is also satisfied by Zen 1, Zen 2 and Excavator,
+  where PEXT is microcoded. That is the binary a rating list runs. Stockfish
+  keeps `USE_PEXT` as a separate target for exactly this reason.
+
+### The assert added that morning never ran
+
+`verify_slider_tables()` was added to prove the black-magic and PEXT paths
+agree. `native` and `release` both carry `-DNDEBUG` so the assert compiles out;
+`debug` keeps asserts but passes **no `-march` flag**, so `__BMI2__` is
+undefined and it takes the black-magic path. **No build this project runs has
+ever executed that assert with PEXT enabled.** Add `-march=native` to the debug
+flags.
+
+### `phase7-dblext2` would have measured the wrong thing
+
+The double-extension cap was propagated in the move loop but **not across null
+moves**, so the child read whatever the previous occupant of that stack slot
+left -- almost always lower. A null move reset the cap, and null moves are
+everywhere. The queued SPRT would have completed normally and returned a number
+describing an **uncapped** feature. Fixed as `9c718c1`, before it ran.
+
+Its inert setting is also not all-zeros: `DoubleExtCap=0` alone leaves the
+negative extensions live.
+
+### Open question on `phase7-rule50c`
+
+The code is correct, but with no threshold the damping is active at essentially
+every node -- `rule50_count()` is 0 only right after a capture or pawn move. So
+every margin in `tunable.h` is now compared against a damped eval, and this
+file's own rule says to re-check those margins when the eval scale moves.
+Stockfish's margins were tuned WITH its damping present; ours were not. Decide
+before spending a 30,000-game `[0, 3]` slot.
+
+---
+
 ## Updating this file
 
 Whoever completes a phase updates: the state table, a changelog entry with the
