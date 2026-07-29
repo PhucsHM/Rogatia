@@ -43,6 +43,61 @@ counts either side of it are not comparable.
 
 ---
 
+## 2026-07-30 -- development stopped
+
+Active development ends here. The author is starting over, writing a chess
+engine from scratch as a first programming project, without AI assistance.
+
+The engine works and the release stands: **3379 +/- 20 CCRL Blitz**, v0.1
+binaries for Windows and Linux, perft-exact move generation, deterministic
+bench, every search change backed by an SPRT.
+
+### Where the two running tests stood when stopped
+
+Neither reached a verdict. Both were heading toward rejection.
+
+| Test | Games | Elo | LLR |
+|---|---|---|---|
+| conthist | 2,820 | -12.08 +/- 7.97 | -2.56 |
+| dodeeper | 4,160 | -6.85 +/- 6.41 | -2.37 |
+
+`dodeeper` is the more interesting of the two: Alexandria measured that
+technique at **+8.68 +/- 5.41**, and 4,160 games here point the other way. That
+is a genuine disagreement with a published figure rather than a null result, and
+it was never resolved.
+
+Resume state is preserved in `sprt-results/*.config.json`, so either could be
+continued from where it stopped.
+
+### Not tested, and worth knowing before trusting anything here
+
+- **No long time control has ever been run.** Every SPRT and gauntlet used
+  8+0.08 or 2'+1. The phase-boundary non-regression at 20+0.2 was specified from
+  the start and never executed.
+- **Every anchor in the 3379 measurement is rated 3160-3405.** None sits above
+  the engine, so the figure is not bounded from above.
+- Queued and never run: `rule50tt`, `dblext`, `hygiene`, `histage`, `capthist`,
+  `corrplexity`. Their branches and binaries are intact.
+
+### The most useful thing in this log
+
+Not the engine. The failures where a check could not fail:
+
+- A perft gate that segfaulted before printing anything, so standing rule #1 had
+  never once run on the machine making most of the commits.
+- A tablebase option no script passed, leaving a merged +24 Elo feature inert in
+  every game after it landed.
+- A snapshot guard that rejected every snapshot including the good ones, silently
+  disabling the resume mechanism it was written to protect.
+- A queue that ran zero games and recorded all five tests as finished, because
+  `grep -c ... || echo 0` produced a two-line string that broke the integer test
+  guarding exactly that case.
+
+Each looked like it was working. Each was found by checking the thing itself
+rather than the code around it.
+
+---
+
 ## 2026-07-29 -- the 2+1 measurement: 3379 +/- 20
 
 540 games, both machines, `8moves_v3.epd`, Hash=16, Threads=1.

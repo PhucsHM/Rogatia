@@ -2,9 +2,14 @@
 
 A UCI chess engine written from scratch in C++20, aimed at blitz.
 
-> **Built with AI assistance.** The author directs the project — what to build,
-> how it is tested, and what the results mean — and the C++ is written with an
-> LLM. This is stated here so nobody has to find it out later.
+> **Development stopped 2026-07-30.** The author is starting over, writing a
+> chess engine from scratch as a first programming project, without AI
+> assistance. This repository stays up as a record; the v0.1 release works and
+> the measurements below stand.
+>
+> **Built with AI assistance.** The author directed the project — what to build,
+> how it was tested, and what the results meant — and the C++ was written with
+> an LLM. This is stated here so nobody has to find it out later.
 >
 > Other engines' source is from this point 30/07/2026 will be no longer used as material for this. Where an author has
 > asked that their repository be left alone, that is honoured; see
