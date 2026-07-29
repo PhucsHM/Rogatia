@@ -6,7 +6,7 @@ A UCI chess engine written from scratch in C++20, aimed at blitz.
 > how it is tested, and what the results mean — and the C++ is written with an
 > LLM. This is stated here so nobody has to find it out later.
 >
-> Other engines' source is not used as material for this. Where an author has
+> Other engines' source is from this point 30/07/2026 will be no longer used as material for this. Where an author has
 > asked that their repository be left alone, that is honoured; see
 > [`docs/PROVENANCE.md`](docs/PROVENANCE.md).
 
