@@ -52,6 +52,15 @@ FASTCHESS=./tools/fastchess.exe
 # answer that [0, 5] would not give.  Retunes now: capthist (rejected twice),
 # rule50b (rejected at threshold 20).
 #
+# timeman is a first test, not a retune, so it takes [0, 5].  Its branch was
+# rebuilt on current main rather than retuned -- the code had never been tested
+# at all, only carried on a branch that fell behind.  It is placed early for two
+# reasons: CLAUDE.md calls node-based time management the cheapest large win
+# available in blitz, and it is a loss candidate, because until 2026-07-29 the
+# code had never been linked or run.  Bench cannot guard it -- bench is
+# fixed-depth and never enters the time path -- so the SPRT is the only check
+# it will ever get.
+#
 # Order is deliberate.  syzygy first because it was 72% of the way to a verdict
 # when it was stopped and is the most likely to pay; repetition next because the
 # syzygy result pushed games INTO the bucket it addresses (three-fold draws from
@@ -64,6 +73,7 @@ QUEUE=(
   "repetition|rogatia-rep|rogatia-base|0|5|"
   "rule50|rogatia-r50|rogatia-base|0|5|"
   "ttpv|rogatia-ttpv|rogatia-base|0|5|"
+  "timeman|rogatia-tm|rogatia-base|0|5|"        # first test, and a loss candidate
   "checkext|rogatia-chkext|rogatia-base|0|5|"
   "corrplexity|rogatia-cplx|rogatia-base|0|5|"
   "capthist|rogatia-capt|rogatia-base|0|3|"     # retune: rejected twice
