@@ -256,6 +256,52 @@ than in parallel. `scripts/testqueue.sh` does that without supervision:
 nohup bash scripts/testqueue.sh > sprt-results/queue-runner.log 2>&1 &
 ```
 
+### Detaching it properly on each box
+
+A queue that dies with the shell that started it is not unattended. The two
+machines need different commands, and the Windows one is not obvious.
+
+**Home box (Linux)** — `setsid` gives it its own session:
+
+```bash
+CONCURRENCY=6 HALF=a nohup setsid bash scripts/testqueue.sh > sprt-results/queue-runner-a.log 2>&1 < /dev/null &
+```
+
+**Laptop (Windows)** — MSYS has no `setsid`, and `nohup` alone only blocks
+SIGHUP: the process stays inside the calling session's tree and dies with it if
+that tree is torn down. `Start-Process` is not the answer either — see the note
+at the top of `scripts/testqueue.sh` about it breaking every engine's startup.
+
+Have a **service** spawn it instead. `Win32_Process.Create` runs the command
+from the WMI provider host, so the queue is parented to `WmiPrvSE.exe` and is
+outside the calling session entirely. It also performs no handle redirection of
+its own, which is exactly what made `Start-Process` unusable — the redirection
+happens inside bash, where it always did.
+
+```powershell
+$repo  = 'C:\Users\minhp\VS Code\Projects\Chess-engine'
+$inner = "cd '/c/Users/minhp/VS Code/Projects/Chess-engine' && HALF=b exec bash scripts/testqueue.sh >> sprt-results/queue-runner-b.log 2>&1"
+$cmd   = '"C:\Program Files\Git\usr\bin\bash.exe" -lc "' + $inner + '"'
+Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine=$cmd; CurrentDirectory=$repo}
+```
+
+`ReturnValue=0` means it started. Check the parent afterwards:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='bash.exe'" |
+  Where-Object { $_.CommandLine -match 'testqueue' } |
+  Select-Object ProcessId, ParentProcessId
+```
+
+The root must show a parent of `WmiPrvSE.exe`. A parent of `claude.exe` or a
+terminal means it is still attached.
+
+**Do not edit `testqueue.sh` while it is running.** Bash reads a script
+incrementally by byte offset, so rewriting the file under a running queue makes
+it execute whatever now sits at that offset. Put the change somewhere else, or
+stop the queue first — the per-test `config.json` snapshot means stopping costs
+at most a minute of games.
+
 `nohup` detaches it, so it survives the terminal closing or an agent session
 ending. Progress goes to `sprt-results/queue-summary.log`.
 
