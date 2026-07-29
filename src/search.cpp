@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <type_traits>
 
 #include "movegen.h"
 #include "nnue.h"
@@ -1175,12 +1176,52 @@ void iterative_deepening(Position& pos, int maxDepth) {
 
 // ------------------------------------------------------------ public API ---
 
+// Halve every history table instead of zeroing it.
+//
+// What a table has learned about move ordering is mostly not game-specific:
+// that a rook belongs on an open file, that a knight retreat is usually a
+// waste, that a particular follow-up refutes a particular first move.  Wiping
+// it at every `ucinewgame` throws that away and makes the first twenty moves
+// of every game search with no ordering knowledge at all.  Halving keeps the
+// shape and lets a new game overwrite it within a few hundred nodes, since the
+// gravity term in update_history() moves a halved entry faster than a saturated
+// one.
+//
+// The transposition table is still cleared outright -- its entries are keyed to
+// exact positions and a stale one is wrong rather than merely weak.
+template<typename T, std::size_t N>
+void age(T (&t)[N]) {
+    auto* p = reinterpret_cast<std::remove_all_extents_t<T>*>(&t);
+    const std::size_t n = sizeof(t) / sizeof(*p);
+    for (std::size_t i = 0; i < n; ++i)
+        p[i] /= 2;
+}
+
+// Full wipe.  bench calls this between positions so that each node count
+// depends on nothing but its own position -- which is the whole basis of bench
+// being a fingerprint, and of OpenBench eligibility.  Ageing here instead made
+// `bench` return 5,155,625 on its own and 4,640,510 after a search in the same
+// process.  Two different answers from one binary is exactly what bench exists
+// to rule out.
 void clear() {
     TT.clear();
     std::memset(W.history, 0, sizeof(W.history));
     std::memset(W.contHist, 0, sizeof(W.contHist));
     std::memset(W.pawnCorr, 0, sizeof(W.pawnCorr));
     std::memset(W.nonPawnCorr, 0, sizeof(W.nonPawnCorr));
+    W.rootBestMove = MOVE_NONE;
+    W.rootScore    = VALUE_NONE;
+}
+
+// What `ucinewgame` gets instead.  A new game is not a new engine: most of what
+// the history tables know is not game-specific, and wiping it makes the opening
+// of every game search with no ordering knowledge at all.
+void new_game() {
+    TT.clear();          // keyed to exact positions; a stale entry is wrong, not weak
+    age(W.history);
+    age(W.contHist);
+    age(W.pawnCorr);
+    age(W.nonPawnCorr);
     W.rootBestMove = MOVE_NONE;
     W.rootScore    = VALUE_NONE;
 }

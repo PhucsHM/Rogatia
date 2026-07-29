@@ -204,7 +204,7 @@ void uci_loop() {
             std::cout << "readyok\n" << std::flush;
         } else if (token == "ucinewgame") {
             e.join();
-            search::clear();
+            search::new_game();
             e.pos.set(StartFEN);
         } else if (token == "setoption") {
             e.join();
