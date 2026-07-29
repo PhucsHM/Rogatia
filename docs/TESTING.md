@@ -37,7 +37,7 @@ move the tag forward, rebuild `rogatia-base`, and note the new bench count.
 
 During a breadth pass like Phase 7 the per-patch baseline moves often, so
 **rebuild `rogatia-base` after every merge into `main`** and check its bench
-before the next test. `rogatia-base` benches **4,772,409** today, which is
+before the next test. `rogatia-base` benches **4,656,884** today, which is
 `main`'s with-net count.
 
 **Rebuild between queue drains, never during one — and a paused drain still
@@ -154,7 +154,7 @@ That gap is the wall OpenBench exists to break, and Phase 7 reaches it.
 different defaults on purpose: **`sprt.sh` uses the sharp book**, because past
 ~2800 a balanced one draws too often to resolve a small patch, while
 **`gauntlet.sh` stays on the balanced book**, because a rating is only
-meaningful against the runs it is compared with and the current 3195 figure was
+meaningful against the runs it is compared with, and the published figure was
 measured there. `BOOK=` overrides either. Both names live in `lib.sh`.
 
 **Concurrency 8, not 16 or 20.** Physical cores only. SMT siblings distort
@@ -163,6 +163,32 @@ patch regression. `lib.sh` derives `physical_cores - 2`.
 
 **Never run two matches at once on one machine.** Oversubscription corrupts
 both measurements.
+
+### Tablebases must be passed, and proved
+
+**Syzygy probing is dormant until `SyzygyPath` is set.** The engine defaults the
+option to `<empty>` and reads no environment variable of its own, so a match that
+does not pass it measures an engine roughly **24 Elo** below its merged strength.
+From the merge until 2026-07-29 no script passed it, and every SPRT in that
+window measured the weaker engine.
+
+`lib.sh` now finds the 3-4-5 set, checks it holds 290 files — an incomplete set
+is worse than none, because `-DNDEBUG` removes Fathom's asserts and a truncated
+file reads as garbage — and exports `TB_OPT` for all three harnesses.
+
+**Prove it loaded; do not assume it.** A readable directory is not enough. On
+Windows the path has to survive Fathom's Win32 file calls, which reject an MSYS
+path outright:
+
+```
+/c/Users/minhp/syzygy/3-4-5  ->  "no tablebases, probing stays off"
+C:/Users/minhp/syzygy/3-4-5  ->  "5-piece tablebases"
+```
+
+`[ -d ... ]` passes for both. `verify_tb()` asks the engine itself and fails
+loudly; `gauntlet.sh` calls it once before spending hours, and `testqueue.sh`
+calls it on **both** binaries per test — a patch measured against a base that
+failed to load tablebases is measuring the tablebases.
 
 ---
 
@@ -232,8 +258,10 @@ engine you play rated opponents:
 scripts/gauntlet.sh 240 ./rogatia
 ```
 
-Anchors live in the `ANCHORS` line of `scripts/gauntlet.sh` with their CCRL
-Blitz (40/4) ratings and error bars. The script prints, per opponent, the
+Anchors live in `scripts/gauntlet.sh` with their CCRL Blitz ratings and error
+bars: `ANCHORS` is the Linux set, `ANCHORS_WINDOWS` the laptop's. CCRL Blitz
+states its own control as "equivalent to 2'+1", so measure a Blitz number at
+`TC=120+1` -- not at the 8+0.08 the SPRTs use. The script prints, per opponent, the
 W/L/D, the score, and `anchor_rating + measured_diff` with the two error bars
 combined in quadrature.
 

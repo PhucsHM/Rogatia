@@ -1,10 +1,11 @@
-# Provenance
+# Sources
 
-Per-feature record of where each technique came from.
+Per-feature record of where each technique came from, and credit to the people
+who wrote it down. Almost everything here traces to the Chess Programming Wiki.
 
-**Why this file exists.** Rogatia is GPL-3.0 and reads other GPL-3 engines as references, which is legally fine — copyright protects expression, not algorithms, and the entire engine programming field is built on shared published techniques. What is *not* fine is transliteration: same statement order, same magic constants, renamed identifiers. That is a translation, and translations are derivative works.
-
-The line is procedural, not just legal. Read a technique, close the file, implement from your own notes. This log is the record that the line was respected. It costs one line per feature and it defuses derivative accusations before they start.
+The notes column is the useful part: it records what was chosen locally, what a
+published constant table gave us, and which decisions have a measurement behind
+them.
 
 **Format:** `Feature — source(s) consulted — notes`
 
@@ -77,14 +78,10 @@ The line is procedural, not just legal. Read a technique, close the file, implem
 | Capture history | CPW "History Heuristic" | Implemented. **Two NULL results, not rejections** (-20 +/- 23 over 400 games, -8.69 +/- 33.62 over ~1,500). Alexandria measures this at +2.80 +/- 2.22 over 44,640 games at the same time control, so neither of our runs could have seen it. `phase7-capthist3` rebuilds it on current main with CaptHistDiv 8 -> 2, because at /8 the history term was 0.58x the pawn-to-knight gap where every reference engine is 2.6-6x |
 | Syzygy probing in search | Fathom (`src/fathom/`, MIT, vendored since Phase 5) and its own header docs | WDL at internal nodes, DTZ at the root for won positions only -- Fathom's docs warn DTZ plays unnaturally when losing. Fathom's WDL wrapper refuses a non-zero fifty-move counter, so probing fires at tablebase *entry* |
 | Repetition ply distinction | Stockfish's `is_draw(ply)` comment describes the rule; implemented from that description | One recurrence counts at or after the root, two before it. The engine previously conflated them and scored a position the real game had visited once as a draw |
-| Fifty-move eval taper | CPW; the general idea is universal, the threshold is ours | Evaluation slides toward zero above a counter threshold. The threshold is not from any source -- tapering from zero was measured first and cost 11.5% more nodes, so it exists to keep ordinary positions bit-identical. **Threshold 20 measured -15.03 +/- 7.97 and was rejected**; `phase7-rule50b` retunes it to 65 |
+| Fifty-move eval taper | CPW; the general idea is universal, the threshold is ours | Evaluation slides toward zero above a counter threshold. **Measured -15.03 +/- 7.97 and rejected.** Parked on `phase7-rule50c`. The objection is that it fires from counter 0, so at an ordinary counter of 20 it is a ~10% haircut on every score -- and all 33 margins in `tunable.h` are calibrated to the undamped scale, making it a global eval rescale wearing a fifty-move label |
+| Fifty-move TT-cutoff guard | Stockfish uses 90; the mechanism is described in CPW's Transposition Table article | Split out of the taper and tested alone. The fifty-move counter is not in the Zobrist key, so one entry serves the same position at counter 3 and counter 93. Threshold 90 rather than a number of our own. Bench cannot gate it -- bench never reaches a counter of 90 -- so it was verified live from a root at 96 |
+| Node-based and stability time management | CPW: Time Management; the two scalers are standard shapes | Soft limit multiplied by a node-fraction term (if the best move consumed most of the tree the position is easy) and a best-move-stability term. **Measured +28.34 +/- 10.32 over 1,708 games.** Constants are ours |
 | PV assembly guarded by a real PV child | Own diagnosis, no source | Not a technique; a defect fix. The child's PV is only copied when a PV child was actually searched |
-
-**Nothing in this phase was transliterated.** The two that came closest to a
-specific engine -- singular extensions and the repetition rule -- were written
-from prose descriptions and from Stockfish's *comment* about what the rule is,
-not from its code. Both were then verified against this engine's own behaviour
-rather than against a reference implementation's output.
 
 ## Performance work -- 2026-07-29
 
@@ -100,6 +97,18 @@ better one.
 | Fused accumulator update | Shape is universal; the mod-2^16 argument is ours | Bit-identical because storing through `int16_t` is reduction mod 2^16, which commutes with addition -- so regrouping is safe whether or not the accumulator wraps |
 | `nnue::loaded()` inline | Own analysis | Out-of-line, it is a real call per `make_move` in the non-LTO fallback build |
 | Null-move accumulator pointer | CPW: Incremental Updates; the shape is universal | A null move changes no feature, so the child shares the parent's accumulator rather than copying 1 KB |
+| Zobrist keys stored piece-major | Own analysis | The five key sets for one (piece, square) sat 8 KB apart; `update_keys` reads four or five of them per piece event. Now 40 contiguous bytes. The fill loop order is the wire format and must not change |
+| Correction tables narrowed to `int16` | Own analysis | Values are clamped to +-8192, so the top half of each `int` was unreachable. 256 KB -> 128 KB |
+| Second SEE skipped on a proven-good capture | Own analysis | `score_move` already ran `see_ge(m, -20)`; SEE pruning re-ran a full exchange for a verdict already in hand. Measured to fire on 8.2% of SEE pruning tests, with zero disagreements over a whole bench |
+| `Magic` struct compacted under PEXT | Own analysis | `magic` and `shift` are black-magic-only. 32 -> 16 bytes, four descriptors per cache line |
+
+Three further candidates were **measured and abandoned**, which is the more
+useful record: an `see_ge` early-out (three runs at +1.52%, +0.38%, -0.26% --
+indistinguishable from zero), a `contHist` piece-index compaction (reliably
+**1.3% slower**, because packing 16 slots to 12 turns power-of-two strides into
+real multiplies), and an `lmr_base` lookup table (not built -- the assembly shows
+one division, not the two the estimate assumed, and a table would silently make
+two SPSA-tunable divisors inert).
 
 **Not taken, and why.** Hand-written SIMD for the SCReLU multiply-accumulate is
 the largest remaining item (~5-12%), and it stays out for now. The 128-bit form
@@ -124,18 +133,23 @@ than an argument.
 
 ## Standing sources
 
-- **Chess Programming Wiki** — https://www.chessprogramming.org/ — CC-BY-SA prose, the safest source of all. Default reference for every technique.
+- **Chess Programming Wiki** — https://www.chessprogramming.org/ — the default
+  reference for every technique here.
 - **Engine Programming Discord** — community norms, review, OpenBench access.
 - **TalkChess** — https://talkchess.com/ — historical threads, testing methodology.
 
-## Reference engines read (never transliterated)
+## Reference engines read
 
-| Engine | License | Used for |
-|---|---|---|
-| Stormphrax | GPL-3.0 | `src/tunable.h` as a map of which modern search features exist and roughly what magnitude their constants take |
-| Alexandria | GPL-3.0 | Readable structure of a modern engine |
-| Obsidian | GPL-3.0 | Cross-check on compact implementations |
-| Caissa | **MIT** | The one permissively-licensed strong reference — code may be reused with attribution |
-| Stockfish | GPL-3.0 | Consulted only to answer "what is the current best-known form of technique X" |
+| Engine | Used for |
+|---|---|
+| Stormphrax | `src/tunable.h` as a map of which modern search features exist and roughly what magnitude their constants take |
+| Alexandria | Readable structure of a modern engine, and published SPRT numbers to sanity-check our own against |
+| Obsidian | Cross-check on compact implementations |
+| Caissa | A strong reference under a permissive licence |
+| Stockfish | "What is the current best-known form of technique X" |
+| Berserk | Published measurements for techniques we were deciding whether to queue |
 
-**Not read:** Motor — the repository has no LICENSE file, so all rights are reserved regardless of being public.
+Published Elo figures from other engines were genuinely useful here — several
+times they showed that one of our own null results was simply an undersized
+sample rather than a rejection. Where a number from another project informed a
+decision, it is cited in the note.

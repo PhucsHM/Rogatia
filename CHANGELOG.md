@@ -8,6 +8,19 @@ read it before starting work, update it when you finish a phase.
 what the other machine is probably doing, and what to do next from where you
 are sitting.
 
+**Reading this from outside the project?** It is a working log kept in reverse
+chronological order, not a document — long, detailed, and written to be useful
+six months later rather than to be read start to finish. Start with the state
+table below, then jump to whichever dated entry interests you. For an overview
+of the engine read [`README.md`](README.md); for the plan,
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+The entries that generalise beyond this project, if you want the interesting
+bits: the game analysis that found a merged feature had been switched off in
+every match since it landed; the three micro-optimisations measured on an idle
+machine, two of which turned out to be wrong; and the two gates discovered to be
+incapable of failing.
+
 ---
 
 ## State right now
