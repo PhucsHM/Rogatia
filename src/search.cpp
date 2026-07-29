@@ -737,6 +737,12 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         ss->movedPiece  = NO_PIECE;
         if (nnue::loaded())
             (ss + 1)->acc = ss->acc;
+        // Carry the double-extension count across the null move too.  The move
+        // loop propagates it, this path did not, and the stack slot is reused
+        // depth-first across the whole tree -- so the child read whatever the
+        // previous occupant left, which is almost always a lower count.  A null
+        // move therefore RESET the cap, and null moves are everywhere.
+        (ss + 1)->dblExt = ss->dblExt;
         pos.make_null_move();
         const Score score =
             -search<false>(pos, ss + 1, -beta, -beta + 1, depth - R, !cutNode);
