@@ -38,6 +38,20 @@ FASTCHESS=./tools/fastchess.exe
 
 # name | dev | base | elo0 | elo1 | extra args for dev only
 #
+# **Bounds are per test, not global.**  A first test of a new technique uses
+# [0, 5]; a retune of a patch that already failed uses [0, 3].
+#
+# The reason is what each test is asking.  A new technique can plausibly be
+# worth 10-40 Elo, and [0, 5] resolves that in ~2-3 hours.  A retune is asking a
+# narrower question -- the patch already measured at or below zero once, so the
+# honest expectation is a few Elo, which sits in the middle of [0, 5] where SPRT
+# is slowest and closest to a coin flip.  [0, 3] makes that same patch the design
+# point and accepts H1 about 95% of the time.
+#
+# [0, 3] costs roughly 2.8x more games, so it is spent only where it buys an
+# answer that [0, 5] would not give.  Retunes now: capthist (rejected twice),
+# rule50b (rejected at threshold 20).
+#
 # Order is deliberate.  syzygy first because it was 72% of the way to a verdict
 # when it was stopped and is the most likely to pay; repetition next because the
 # syzygy result pushed games INTO the bucket it addresses (three-fold draws from
@@ -46,18 +60,18 @@ FASTCHESS=./tools/fastchess.exe
 # free win.  A test where both sides are the same binary and only an option
 # differs is the cleanest comparison there is: nothing else can explain it.
 QUEUE=(
-  "syzygy|rogatia-tb|rogatia-tb|0|3|option.SyzygyPath=C:/Users/minhp/syzygy/3-4-5"
-  "repetition|rogatia-rep|rogatia-base|0|3|"
-  "rule50|rogatia-r50|rogatia-base|0|3|"
-  "ttpv|rogatia-ttpv|rogatia-base|0|3|"
-  "checkext|rogatia-chkext|rogatia-base|0|3|"
-  "corrplexity|rogatia-cplx|rogatia-base|0|3|"
-  "capthist|rogatia-capt|rogatia-base|0|3|"
-  "rule50b|rogatia-r50b|rogatia-base|0|3|"
-  "conthist|rogatia-ch6|rogatia-base|0|3|"
-  "histage|rogatia-age|rogatia-base|0|3|"
-  "dblext|rogatia-dblx|rogatia-base|0|3|"
-  "probcut|rogatia-pc|rogatia-base|0|3|"
+  "syzygy|rogatia-tb|rogatia-tb|0|5|option.SyzygyPath=C:/Users/minhp/syzygy/3-4-5"
+  "repetition|rogatia-rep|rogatia-base|0|5|"
+  "rule50|rogatia-r50|rogatia-base|0|5|"
+  "ttpv|rogatia-ttpv|rogatia-base|0|5|"
+  "checkext|rogatia-chkext|rogatia-base|0|5|"
+  "corrplexity|rogatia-cplx|rogatia-base|0|5|"
+  "capthist|rogatia-capt|rogatia-base|0|3|"     # retune: rejected twice
+  "rule50b|rogatia-r50b|rogatia-base|0|3|"      # retune: rejected at threshold 20
+  "conthist|rogatia-ch6|rogatia-base|0|5|"
+  "histage|rogatia-age|rogatia-base|0|5|"
+  "dblext|rogatia-dblx|rogatia-base|0|5|"
+  "probcut|rogatia-pc|rogatia-base|0|5|"
 )
 
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$SUMMARY"; }
@@ -118,20 +132,19 @@ for entry in "${QUEUE[@]}"; do
     # Deliberately NOT an early abort on a losing result: SPRT rejects a real
     # loss fast on its own, and second-guessing it would throw away verdicts
     # that were about to arrive.
-    # Raised 4000 -> 12000 when the bounds tightened to [0.00, 3.00].
+    # The limit follows the bounds, because the two cannot be set apart.
     #
-    # Games to a verdict scale about 1/(elo1 - elo0)^2, so [0,5] -> [0,3] costs
-    # roughly 2.8x more games.  Leaving the limit at 4,000 would abort nearly
-    # every test before its LLR could leave +-0.6 -- which is the exact opposite
-    # of why the bounds were tightened.  The point of [0,3] is to resolve 2-4
-    # Elo patches instead of coin-flipping them; a stall limit that fires first
-    # resolves nothing and parks everything.
+    # Games to a verdict scale about 1/(elo1 - elo0)^2, so [0,3] costs roughly
+    # 2.8x more games than [0,5].  A [0,3] test under a 4,000-game limit aborts
+    # before its LLR can leave +-0.6, which parks the exact 2-4 Elo patches the
+    # tighter bounds exist to resolve.  A [0,5] test under a 12,000-game limit
+    # burns ~7 extra hours on a question already answered.
     #
-    # 12,000 games is ~11 hours at ~1,100 games/hour.  That is the honest
-    # ceiling for one machine.  Reliably resolving a +2 patch needs more games
-    # than this box can supply, and that is what OpenBench is for -- see
-    # docs/TESTING.md.
-    STALL_GAMES=12000
+    # 4,000 games is ~3.5 hours at ~1,100 games/hour; 12,000 is ~11 hours.  That
+    # 11 hours is the honest ceiling for one machine -- resolving a +2 patch
+    # reliably needs more games than this box supplies, and that is what
+    # OpenBench is for.  See docs/TESTING.md.
+    if [ "$elo1" = "3" ]; then STALL_GAMES=12000; else STALL_GAMES=4000; fi
     STALL_LLR=0.6
     monitor() {
         local pid=$1 lf=$2       # not `log`: that is the function name

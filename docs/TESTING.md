@@ -109,22 +109,37 @@ The bounds tighten as the engine strengthens because the patches get smaller.
 A `[0, 10]` test at 3400 would accept noise; a `[0, 3]` test at 2200 would burn
 a day of games proving something a `[0, 10]` test settles in an hour.
 
-**Phase 7 uses `[0.00, 3.00]` at ~3175, ahead of the table.** Deliberate. `elo1`
-is not a threshold the patch must clear -- H1 accepted means "better than
-`elo0`" -- but a true +3 patch sits near the middle of `[0, 5]`, which is where
-SPRT is slowest and closest to a coin flip on which hypothesis it accepts. At
-`[0, 3]` that same patch is the design point and accepts H1 about 95% of the
-time. Many modern search refinements are worth 2-4 Elo, and this phase exists to
-find which of them help this engine.
+### Bounds are per test in Phase 7, not per phase
 
-**What it costs: rejecting a bad patch gets about 2.8x slower.** Games to a
-verdict scale about `1/(elo1 - elo0)^2`. `scripts/testqueue.sh` therefore raises
-`STALL_GAMES` from 4,000 to **12,000** alongside the bounds -- a stall limit that
-fires before the LLR can move resolves nothing and parks everything.
+The band follows **what the test asks**, not only the engine's strength.
 
-**The honest limit:** reliably resolving a +2 patch needs more games than one
+| The test is | Bounds | Stall limit |
+|---|---|---|
+| The first test of a new technique | `[0.00, 5.00]` | 4,000 games (~3.5h) |
+| A **retune** of a patch that already failed | `[0.00, 3.00]` | 12,000 games (~11h) |
+
+**Why a retune earns the tighter band.** `elo1` is not a threshold the patch must
+clear -- H1 accepted means "better than `elo0`". But a retune already measured at
+or below zero once, so the honest expectation is a few Elo. A true +3 patch sits
+near the middle of `[0, 5]`, which is where SPRT is slowest and closest to a coin
+flip on which hypothesis it accepts. At `[0, 3]` that same patch is the design
+point and accepts H1 about 95% of the time.
+
+**Why a new technique does not.** It can plausibly be worth 10-40 Elo, and
+`[0, 5]` settles that in ~2-3 hours. Spending `[0, 3]` there buys no answer that
+`[0, 5]` would not already give.
+
+**The stall limit must follow the bounds.** Games to a verdict scale about
+`1/(elo1 - elo0)^2`, so `[0, 3]` costs roughly 2.8x more games. A `[0, 3]` test
+under a 4,000-game limit aborts before its LLR can leave `+-0.6`, which parks the
+exact patches the tighter band exists to resolve. A `[0, 5]` test under a
+12,000-game limit burns ~7 extra hours on a question already answered.
+`scripts/testqueue.sh` therefore derives the limit from `elo1` rather than
+setting it globally.
+
+**The honest ceiling:** resolving a +2 patch reliably needs more games than one
 machine supplies. 12,000 games is ~11 hours here. That is the wall OpenBench
-exists to break, and `[0, 3]` on one box reaches it sooner than `[0, 5]` did.
+exists to break.
 
 **Books:** `8moves_v3.epd` (balanced) under ~2800, `UHO_Lichess_4852_v1.epd`
 (biased, fewer draws, faster convergence) above it. The two harnesses now pick

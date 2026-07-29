@@ -689,6 +689,35 @@ failed bundle could not say which component caused it.
 **Takes effect at the next queue launch.** A running drain keeps the bounds it
 started with, and a resumed test keeps the bounds baked into its `config.json`.
 
+### Revised the same morning — bounds are per test, not per phase
+
+Applying `[0, 3]` to the whole queue put the drain at 1.5 to 4 days, because six
+of the eight tests are first tests of new techniques and do not need it. The band
+now follows **what each test asks**:
+
+| The test is | Bounds | Stall limit |
+|---|---|---|
+| The first test of a new technique | `[0.00, 5.00]` | 4,000 (~3.5h) |
+| A retune of a patch that already failed | `[0.00, 3.00]` | 12,000 (~11h) |
+
+A new technique can plausibly be worth 10-40 Elo, and `[0, 5]` settles that in
+~2-3 hours; `[0, 3]` there buys no answer `[0, 5]` would not already give. A
+retune already measured at or below zero once, so a few Elo is the honest
+expectation, and that is exactly the case `[0, 5]` coin-flips.
+
+`STALL_GAMES` is now derived from `elo1` rather than set globally. The two cannot
+be set apart: a `[0, 3]` test under a 4,000-game limit parks before its LLR can
+move, and a `[0, 5]` test under a 12,000-game limit burns ~7 extra hours.
+
+Retunes in the queue now: **capthist** (rejected twice) and **rule50b** (rejected
+at threshold 20). The drain estimate falls to roughly **1 to 1.5 days**.
+
+**The resume path is no longer unverified.** Two clean stop-and-resume cycles,
+at 1,200 and 1,378 games, both carried every game rather than restarting from
+zero. Order is what makes it safe: **kill the queue runner before fastchess.**
+Kill fastchess first and the script logs a verdict, appends the test to
+`queue-state`, and deletes its resume file.
+
 ---
 
 ## Updating this file
