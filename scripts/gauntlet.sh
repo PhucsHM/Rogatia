@@ -44,7 +44,12 @@ BOOK=${BOOK:-$BOOK_BALANCED}
 # binaries only. A 15-20% score still converts -- it is a 95% score that does
 # not -- so a strong anchor from a different family is worth more than a
 # same-family one at an even score.
-ANCHORS="zahak-8.0:3160:16 zahak-9.0:3292:12 zahak-10.0:3334:8 stormphrax-5.0.0:3619:15 viridithas-15.0.0:3681:10"
+ANCHORS=${ANCHORS:-"zahak-8.0:3160:16 zahak-9.0:3292:12 zahak-10.0:3334:8 stormphrax-5.0.0:3619:15 viridithas-15.0.0:3681:10"}
+
+# Overridable, because the two boxes can run DIFFERENT anchors. The set above
+# is Linux-native. Alexandria, Clover, Smallbrain and Obsidian publish Windows
+# binaries only, so the laptop runs those -- no Wine needed, it is a Windows
+# box. Between the two machines that is seven families instead of three.
 
 OUT=$ROOT/sprt-results/gauntlet-$(date +%Y%m%d-%H%M%S)
 mkdir -p "$OUT"
