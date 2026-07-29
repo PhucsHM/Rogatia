@@ -363,7 +363,14 @@ GPL-3.0. Reading other engines is fine and is how the whole field works — copy
 
 Log every non-obvious feature in `docs/PROVENANCE.md` with a one-line source note. Cheap insurance, and it defuses derivative accusations before they start.
 
-Reference engines worth reading: **Stormphrax** (best modern C++; `src/tunable.h` maps the whole modern search), **Alexandria** (most readable), **Obsidian** (smallest strong C++), **Caissa** (MIT — the one you may actually copy from). Avoid **Motor** — no LICENSE file means all rights reserved.
+**Do not read other engines' source.** Several authors have asked that their
+repositories not be used this way, and some now carry an explicit notice to that
+effect. Ciekce asked directly on 2026-07-30 that Stormphrax not be used, and
+that request is honoured. Use the Chess Programming Wiki, published papers, and
+engine authors' own prose write-ups instead.
+
+Playing against a released binary in a gauntlet is unaffected -- that is what
+released binaries are for.
 
 ---
 

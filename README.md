@@ -2,6 +2,14 @@
 
 A UCI chess engine written from scratch in C++20, aimed at blitz.
 
+> **Built with AI assistance.** The author directs the project — what to build,
+> how it is tested, and what the results mean — and the C++ is written with an
+> LLM. This is stated here so nobody has to find it out later.
+>
+> Other engines' source is not used as material for this. Where an author has
+> asked that their repository be left alone, that is honoured; see
+> [`docs/PROVENANCE.md`](docs/PROVENANCE.md).
+
 ## Strength
 
 **3379 +/- 20 CCRL Blitz**, from 540 games at `tc=120+1` against six CCRL-rated

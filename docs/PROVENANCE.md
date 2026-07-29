@@ -58,7 +58,7 @@ and which decisions have a measurement behind them.
 | Time management (soft/hard split) | CPW: Time Management | Flat clock fraction, move overhead, soft checked between iterations and hard every 1024 nodes |
 | UCI protocol | Stefan-Meyer Kahlen, UCI specification (public protocol document) | Protocol text only; no engine's implementation consulted |
 | Deterministic bench | OpenBench README (public harness requirement) | Position set generated and legality-checked with this engine's own movegen |
-| Self-play datagen | CPW: Automated Tuning; the datagen sections of Stormphrax and Viridithas READMEs | Structure is the field-standard loop (random plies, node-limited self-play, quiet filter, adjudication); no code read or adapted |
+| Self-play datagen | CPW: Automated Tuning | Structure is the field-standard loop: random plies, node-limited self-play, quiet filter, adjudication |
 | bulletformat record layout | `jw1912/bulletformat` `src/chess.rs` (MIT) | Layout only -- a wire format, which has to match byte for byte. The packing code in `src/datagen.cpp` is written here |
 | Syzygy probing | **Fathom** (`jdart1/Fathom`, MIT) | Vendored verbatim in `src/fathom/`. `tbchess.c` is `#include`d textually by `tbprobe.cpp`; renamed to `.cpp` so the Makefile rule compiles it, with no source edits. LICENSE copied alongside |
 
@@ -132,18 +132,22 @@ than an argument.
 - **Engine Programming Discord** — community norms, review, OpenBench access.
 - **TalkChess** — https://talkchess.com/ — historical threads, testing methodology.
 
-## Reference engines read
+## Other engines
 
-| Engine | Used for |
-|---|---|
-| Stormphrax | `src/tunable.h` as a map of which modern search features exist and roughly what magnitude their constants take |
-| Alexandria | Readable structure of a modern engine, and published SPRT numbers to sanity-check our own against |
-| Obsidian | Cross-check on compact implementations |
-| Caissa | A strong reference under a permissive licence |
-| Stockfish | "What is the current best-known form of technique X" |
-| Berserk | Published measurements for techniques we were deciding whether to queue |
+**Policy since 2026-07-30: other engines' source is not read.** Several authors
+have asked that their repositories not be used as material for an AI-assisted
+project, and some now carry an explicit notice. Ciekce asked directly that
+Stormphrax not be used; that request is honoured, and it is applied generally
+rather than only where asked.
 
-Published Elo figures from other engines were genuinely useful here — several
-times they showed that one of our own null results was simply an undersized
-sample rather than a rejection. Where a number from another project informed a
-decision, it is cited in the note.
+What is used instead: the Chess Programming Wiki, published papers, and engine
+authors' own written descriptions of their work.
+
+**Published Elo figures remain valuable and are cited in the notes above.**
+Several times a number from another project showed that one of this engine's
+null results was an undersized sample rather than a rejection — Alexandria's
++2.80 +/- 2.22 over 44,640 games for capture history, against two runs here of
+400 and ~1,500, is the clearest case.
+
+Playing against a released binary in a gauntlet is a separate matter and
+continues; that is what released binaries are for.
