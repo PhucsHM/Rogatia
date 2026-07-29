@@ -119,11 +119,12 @@ int main(int argc, char** argv) {
         std::fseek(f, 0, SEEK_END);
         const long long sz = std::ftell(f);
         std::fclose(f);
-        if (sz % REC) {
-            std::fprintf(stderr, "%s is %lld bytes, not a multiple of %d -- truncated?\n",
-                         argv[a], sz, REC);
-            return 1;
-        }
+        // A trailing partial record is expected, not an error: datagen may still
+        // be appending to this shard.  Round down to the last whole record and
+        // say so, rather than refusing to run on a live directory.
+        if (sz % REC)
+            std::fprintf(stderr, "note       %s ends mid-record (%lld bytes); ignoring the tail\n",
+                         argv[a], sz % REC);
         totalRecs += std::uint64_t(sz / REC);
     }
     std::fprintf(stderr, "input      %llu positions in %d shards\n",
