@@ -102,6 +102,7 @@ bool load(const char* path) {
     return ok;
 }
 
+
 bool loaded() { return Loaded; }
 
 void refresh(const Position& pos, Accumulator& acc) {
@@ -127,21 +128,26 @@ void refresh(const Position& pos, Accumulator& acc) {
 
 namespace {
 
-void add_feature(Accumulator& a, Color c, PieceType pt, Square s) {
-    for (Color pov : {WHITE, BLACK}) {
-        const std::int16_t* w = &Net.l0w[feature_index(pov, c, pt, s) * HIDDEN];
-        for (int i = 0; i < HIDDEN; ++i)
-            a.v[pov][i] = std::int16_t(a.v[pov][i] + w[i]);
-    }
+// A column of zeros, so an unused delta slot can point somewhere harmless and
+// the fused loop below stays unconditional.  Adding zero is a no-op, so this is
+// bit-identical to skipping the term -- and an unconditional loop is what the
+// vectoriser needs.  MUST stay const: nothing may ever write through it.
+alignas(64) const std::int16_t ZeroColumn[HIDDEN] = {};
+
+const std::int16_t* column(Color pov, Color c, PieceType pt, Square s) {
+    return &Net.l0w[feature_index(pov, c, pt, s) * HIDDEN];
 }
 
-void remove_feature(Accumulator& a, Color c, PieceType pt, Square s) {
-    for (Color pov : {WHITE, BLACK}) {
-        const std::int16_t* w = &Net.l0w[feature_index(pov, c, pt, s) * HIDDEN];
-        for (int i = 0; i < HIDDEN; ++i)
-            a.v[pov][i] = std::int16_t(a.v[pov][i] - w[i]);
-    }
+// One feature change, resolved to a weight column per perspective.
+struct Delta {
+    const std::int16_t* w[COLOR_NB];
+};
+
+Delta delta_of(Color c, PieceType pt, Square s) {
+    return {{column(WHITE, c, pt, s), column(BLACK, c, pt, s)}};
 }
+
+const Delta NoDelta{{ZeroColumn, ZeroColumn}};
 
 }  // namespace
 
@@ -150,15 +156,27 @@ void apply_move(const Position& pos, Move m, const Accumulator& src, Accumulator
     // board, which is a real risk of drift.  tests/run_nnue.cpp walks a tree and
     // asserts this agrees with a from-scratch refresh at every node -- treat
     // that as the perft of the accumulator and never skip it.
-    dst = src;
+    //
+    // Deltas are RESOLVED FIRST, then applied in ONE fused pass per perspective.
+    // The old shape was `dst = src` followed by two to four separate
+    // read-modify-write passes, so a quiet move touched the accumulator three
+    // times: 1 KB copied, then subtracted, then added.  Here the copy vanishes
+    // into the read side of the fused loop.
+    //
+    // Bit-identical, and not by an associativity argument: the old code stored
+    // through std::int16_t at every step, which is reduction mod 2^16, and
+    // reduction mod 2^16 commutes with addition.  So grouping the terms
+    // differently -- or letting the vectoriser pick any width -- gives the same
+    // result whether or not the accumulator ever actually wraps.  All
+    // intermediates stay inside int.
+    const Color     us   = pos.side_to_move();
+    const Square    from = from_sq(m);
+    const Square    to   = to_sq(m);
+    const MoveType  mt   = type_of(m);
+    const PieceType pt   = type_of(pos.piece_on(from));
 
-    const Color    us   = pos.side_to_move();
-    const Square   from = from_sq(m);
-    const Square   to   = to_sq(m);
-    const MoveType mt   = type_of(m);
-    const PieceType pt  = type_of(pos.piece_on(from));
-
-    remove_feature(dst, us, pt, from);
+    Delta add0 = NoDelta, add1 = NoDelta;
+    Delta rem0 = delta_of(us, pt, from), rem1 = NoDelta;
 
     if (mt == CASTLING) {
         // `to` is the king's landing square, and the rook jumps over it.
@@ -166,18 +184,34 @@ void apply_move(const Position& pos, Move m, const Accumulator& src, Accumulator
         const Square rfrom    = relative_square(us, kingSide ? SQ_H1 : SQ_A1);
         const Square rto      = relative_square(us, kingSide ? SQ_F1 : SQ_D1);
 
-        add_feature(dst, us, KING, to);
-        remove_feature(dst, us, ROOK, rfrom);
-        add_feature(dst, us, ROOK, rto);
-        return;
+        add0 = delta_of(us, KING, to);
+        add1 = delta_of(us, ROOK, rto);
+        rem1 = delta_of(us, ROOK, rfrom);
+    } else {
+        if (mt == EN_PASSANT)
+            rem1 = delta_of(~us, PAWN, Square(int(to) - int(pawn_push(us))));
+        else if (!pos.empty(to))
+            rem1 = delta_of(~us, type_of(pos.piece_on(to)), to);
+
+        add0 = delta_of(us, mt == PROMOTION ? promotion_type(m) : pt, to);
     }
 
-    if (mt == EN_PASSANT)
-        remove_feature(dst, ~us, PAWN, Square(int(to) - int(pawn_push(us))));
-    else if (!pos.empty(to))
-        remove_feature(dst, ~us, type_of(pos.piece_on(to)), to);
+    for (Color pov : {WHITE, BLACK}) {
+        // __restrict: src and dst never alias.  The search always passes
+        // ss->acc and (ss+1)->acc, and run_nnue.cpp passes two distinct locals.
+        // Without this the compiler must assume overlap and will either emit a
+        // runtime check or refuse to vectorise -- which would make this change
+        // look like a regression.
+        const std::int16_t* __restrict a0 = add0.w[pov];
+        const std::int16_t* __restrict a1 = add1.w[pov];
+        const std::int16_t* __restrict r0 = rem0.w[pov];
+        const std::int16_t* __restrict r1 = rem1.w[pov];
+        const std::int16_t* __restrict in = src.v[pov];
+        std::int16_t* __restrict       ou = dst.v[pov];
 
-    add_feature(dst, us, mt == PROMOTION ? promotion_type(m) : pt, to);
+        for (int i = 0; i < HIDDEN; ++i)
+            ou[i] = std::int16_t(in[i] + a0[i] + a1[i] - r0[i] - r1[i]);
+    }
 }
 
 Score evaluate(const Position& pos, const Accumulator& acc) {
