@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -121,9 +122,10 @@ int main(int argc, char** argv) {
             if (!ok)
                 ++failures;
 
-            std::printf("  D%-2d %14llu  expected %14llu  %-4s  %6lldms\n", depth,
-                        (unsigned long long) nodes, (unsigned long long) expect,
-                        ok ? "OK" : "FAIL", (long long) ms);
+            std::cout << "  D" << std::left << std::setw(2) << depth << std::right
+                      << std::setw(15) << nodes << "  expected " << std::setw(14) << expect
+                      << "  " << std::left << std::setw(4) << (ok ? "OK" : "FAIL")
+                      << std::right << std::setw(7) << ms << "ms\n";
 
             if (!ok) {
                 std::cout << "  --- divide at depth " << depth << " ---\n";
@@ -138,11 +140,17 @@ int main(int argc, char** argv) {
                              std::chrono::steady_clock::now() - t0)
                              .count();
 
-    std::printf("%d/%d checks passed, %llu nodes in %lldms", checked - failures, checked,
-                (unsigned long long) totalNodes, (long long) totalMs);
+    // One stream for the whole report, deliberately.  This used to print the
+    // per-depth lines and the verdict with std::printf while the FENs went to
+    // std::cout, and the two carry separate buffers: redirected to a file the
+    // verdict landed nowhere near the end, so `tail` on the log showed a FEN
+    // and no result.  A gate whose output reads as a failure is worse than no
+    // gate, which is the same lesson that made this runner drop std::ifstream.
+    std::cout << checked - failures << '/' << checked << " checks passed, " << totalNodes
+              << " nodes in " << totalMs << "ms";
     if (totalMs > 0)
-        std::printf(" (%llu knps)", (unsigned long long) (totalNodes / (std::uint64_t) totalMs));
-    std::printf("\n");
+        std::cout << " (" << totalNodes / (std::uint64_t) totalMs << " knps)";
+    std::cout << '\n';
 
     return failures ? 1 : 0;
 }
