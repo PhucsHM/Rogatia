@@ -953,6 +953,53 @@ before spending a 30,000-game `[0, 3]` slot.
 
 ---
 
+## 2026-07-29 -- the perft gate had never run on the laptop
+
+`make run-perft` segfaulted with **zero output**, which reads as a crash in the
+engine and is not. **Constructing a `std::ifstream` segfaults on this MinGW
+toolchain.** `std::cout` works, C stdio works, only the file streams die -- an
+eight-line program that opens a text file crashes.
+
+So standing rule #1 -- *"Perft must stay bit-exact... runs `make run-perft`
+before commit"* -- has been **unenforceable on the machine that makes most of
+the commits**, and nothing said so. The same toolchain cannot link `make debug`
+either (no `-lasan`/`-lubsan`), so two of the four gates were dead here and the
+37/37 figure had only ever been verified on the training box.
+
+`tests/run_perft.cpp` was the only file in the tree using `ifstream`. It now
+uses `fgets`. **First run: 37/37, 626,461,214 nodes** -- exactly the recorded
+count, so the engine was never the problem.
+
+Worth generalising: a gate that cannot run is worse than no gate, because it
+reads as a passing one. Both dead gates here failed in ways that looked like
+someone else's problem -- a segfault with no message, and a link error about
+sanitiser libraries.
+
+### Also fixed this round
+
+- `bench` calls `tb_free()`, so a UCI session that had set `SyzygyPath` silently
+  played on without tablebases. `uci.cpp` already restored `Hash` after bench
+  for the same reason; the tablebase path had not been given the same treatment.
+- `history_` was reserved for 310 entries. `uci.cpp` replays the whole game
+  before every search, so it holds game plies PLUS search plies -- a 130-move
+  game needs 506, which cost a silent reallocation and a ~57 KB copy mid-search.
+- The `debug` build passed no `-march`, so `__BMI2__` was undefined and it took
+  the black-magic path. Since `native` and `release` both carry `-DNDEBUG`,
+  `debug` is the only build that runs `verify_slider_tables()` -- which had
+  therefore never compared the PEXT indexer to anything.
+- The eval-scale check could not detect the drift it cites. The start position
+  is worth ~+30 cp, so at twice the scale it reads ~+60 -- inside any sane band.
+  It now probes queen odds (~+900), where a doubled scale reads ~+1800.
+- `corrected_eval` clamped to `VALUE_MATE_IN_MAX_PLY - 1`, which is exactly
+  `VALUE_TB` -- a value `is_decisive()` returns true for. The clamp did not
+  clear the range the guards now test.
+- The corpus filter could read a shard out of phase after a partial record, and
+  its shuffle truncated the good output before rewriting it with an unchecked
+  `fclose`. Both fixed; the second fix then failed on Windows because
+  `std::rename` does not overwrite there, which the test caught.
+
+---
+
 ## Updating this file
 
 Whoever completes a phase updates: the state table, a changelog entry with the
