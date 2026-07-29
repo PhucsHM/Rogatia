@@ -299,8 +299,11 @@ Score correction(const Position& pos) {
 Score corrected_eval(Score raw, const Position& pos) {
     if (raw == VALUE_NONE)
         return VALUE_NONE;
-    return std::clamp(Score(raw + correction(pos)), Score(-VALUE_MATE_IN_MAX_PLY + 1),
-                      Score(VALUE_MATE_IN_MAX_PLY - 1));
+    // Clamp clear of the DECISIVE range, not just the mate range.
+    // VALUE_MATE_IN_MAX_PLY - 1 is exactly VALUE_TB, for which is_decisive() is
+    // true -- so the old bound did not clear what the guards now test.
+    return std::clamp(Score(raw + correction(pos)), Score(-VALUE_TB_WIN_IN_MAX_PLY + 1),
+                      Score(VALUE_TB_WIN_IN_MAX_PLY - 1));
 }
 
 void update_corr(int& slot, int diff, int depth) {
