@@ -80,7 +80,7 @@ else ifeq ($(build),debug)
 	LDFLAGS  += -fsanitize=address,undefined
 endif
 
-.PHONY: all debug release perft bench run-perft nnue-test run-nnue keycheck run-keycheck clean format
+.PHONY: all debug release perft bench run-perft nnue-test run-nnue keycheck run-keycheck filter clean format
 
 all: $(EXE)
 
@@ -138,6 +138,11 @@ run-keycheck: keycheck
 # The node count printed here goes in every commit message.
 bench: $(EXE)
 	@./$(EXE) bench
+
+# Training corpus filter.  Standalone -- it shares no engine source, so it does
+# not need EVALFILE and does not care which net is around.
+filter: scripts/filter.cpp
+	$(CXX) -std=c++20 -O2 -Wall -Wextra -o filter scripts/filter.cpp
 
 clean:
 	@rm -rf $(BUILDDIR) $(EXE) $(EXE)-debug
