@@ -9,7 +9,6 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -68,7 +67,12 @@ int main(int argc, char** argv) {
     const std::string path = (argc > 1) ? argv[1] : "tests/perft_suite.txt";
     const int         maxDepth = (argc > 2) ? std::atoi(argv[2]) : 6;
 
-    std::ifstream in(path);
+    // C stdio, NOT std::ifstream.  Constructing an ifstream segfaults on the
+    // laptop's MinGW toolchain -- std::cout and C stdio both work, only the
+    // file streams die.  That is why this gate, standing rule #1 of the whole
+    // project, had never once run on the machine that makes most of the
+    // commits.  It was not an engine bug and there was no output to say so.
+    std::FILE* in = std::fopen(path.c_str(), "r");
     if (!in) {
         std::cerr << "cannot open suite file: " << path << '\n';
         return 2;
@@ -81,11 +85,12 @@ int main(int argc, char** argv) {
     }
 
     std::vector<Entry> entries;
-    std::string        line;
+    char               buf[512];   // longest suite line is 124 bytes
     Entry              e;
-    while (std::getline(in, line))
-        if (parse_line(line, e))
+    while (std::fgets(buf, sizeof buf, in))
+        if (parse_line(std::string(buf), e))
             entries.push_back(e);
+    std::fclose(in);
 
     int failures = 0, checked = 0;
     std::uint64_t totalNodes = 0;
