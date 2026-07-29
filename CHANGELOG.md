@@ -16,10 +16,10 @@ are sitting.
 |---|---|
 | Phases complete | 1–6. **Phase 7 in progress.** Merged: singular extensions (+39.04 +/- 12.69), correction history (+33.13 +/- 11.60), Syzygy probing (+24.07 +/- 9.41), the PV stale-tail fix (bench-neutral). Parked: repetition (~+2, stalled), rule50 (**-15.03, rejected**). See "Phase 7 conversion work" below. |
 | Target | **3500+ CCRL Blitz** (raised from 3200 on 2026-07-28). Blitz-only: measured on CCRL Blitz, tuned at the time control it plays, never verified at a slower one. |
-| Strength | **~3175 CCRL Blitz** — see "What the rating actually says" below. The gauntlet arithmetic returns 3195 +/- 24; three separate caveats all push it down, none up. |
-| Bench, with a net | **4,772,409** (4,063,328 at `base-phase6`) |
+| Strength | **3379 +/- 20 CCRL Blitz**, 2026-07-29, six anchors across four families at `tc=120+1`. Supersedes ~3175, which was measured at 8+0.08 against the p6 net. See "The 2+1 measurement" below — **three caveats, and the third is that no anchor sits above the engine.** |
+| Bench, with a net | **4,656,884** (4,063,328 at `base-phase6`) |
 | Bench, no net | **6,951,633** |
-| Current net | `nets/rogatia-p6.nnue`, `(768→256)x2→1`, 112M positions |
+| Current net | `nets/rogatia-p8a.nnue`, `(768→256)x2→1`, 160M filtered positions. SPRT'd **+184.38 +/- 28.01** over p6. |
 | SPRT baseline | **current `main`** — `rogatia-base.exe` benches 4,772,409, which is `main`'s with-net count. Every queued test measures its own patch, not the accumulated phase. The tag `base-phase6` is the *phase* baseline, used only for the end-of-phase gate. **Do not rebuild `rogatia-base` while the queue is draining.** |
 | Work split | **See "Active work split — set 2026-07-28" below.** Training box regenerates the corpus and retrains; laptop does Phase 7 search. |
 | Laptop | **Draining the Phase 7 search queue.** Net fetched, checksum verified, all four gates pass. Bounds are per test — see "bounds tightened" below |
@@ -30,14 +30,70 @@ counts either side of it are not comparable.
 
 ---
 
+## 2026-07-29 -- the 2+1 measurement: 3379 +/- 20
+
+540 games, both machines, `8moves_v3.epd`, Hash=16, Threads=1.
+
+**Run at `tc=120+1`, which is what CCRL Blitz states for itself** -- "equivalent
+to 2'+1" on an Intel i7-4770K". Every earlier rating in this file was measured at
+8+0.08. `scripts/gauntlet.sh` had described the list as 40/4, which is its old
+control; that comment was wrong and is fixed.
+
+| Opponent | CCRL Blitz | Games | W-L-D | Score | Implied |
+|---|---|---|---|---|---|
+| Zahak 8.0 | 3160 +/- 16 | 80 | 52-2-26 | 81.25% | 3415 +/- 72 |
+| Zahak 9.0 | 3292 +/- 12 | 80 | 22-12-46 | 56.25% | 3336 +/- 50 |
+| Zahak 10.0 | 3334 +/- 8 | 80 | 21-8-51 | 58.13% | 3391 +/- 43 |
+| Smallbrain 6.0 | 3361 +/- 15 | 100 | 29-11-60 | 59.00% | 3424 +/- 45 |
+| Clover 3.1 | 3399 +/- 11 | 100 | 11-33-56 | 39.00% | 3321 +/- 45 |
+| Alexandria 3.5 | 3405 +/- 13 | 100 | 26-25-49 | 50.50% | 3408 +/- 52 |
+
+Inverse-variance weighted: **3379 +/- 20**. Dropping the 81% row gives 3376 +/-
+21, so the compressed anchor is not carrying the figure.
+
+The jump from 3195 is accounted for: the p8a net SPRT'd at **+184.38 +/- 28.01**
+over p6, and 3195 + 184 lands here.
+
+### What this measurement cannot tell you
+
+1. **80-100 games per anchor is thin.** The 3195 figure used 240 each.
+2. **The six implied values span 103 points** -- 3321 to 3424. They agree on a
+   band, not on a number.
+3. **No anchor sits above the engine.** All six are rated 3160-3405.
+
+The third one was in the process of being closed and was reopened by choice.
+**Stormphrax 5.0.0 (3619) reached 20 games at 22.5%**, which converts to ~3404
+and agrees with the other six. 22.5% is nowhere near the <5% floor at which
+`gauntlet.sh` refuses to convert a score, so it was a usable anchor, not a
+saturated one. It and Viridithas 15.0.0 (3681) were cancelled on the judgement
+that both are too strong to evaluate against. Re-run them before this number is
+published anywhere.
+
+### Two process failures this run exposed
+
+- **The laptop's anchor ratings lived only in a shell variable.** They were
+  passed as `ANCHORS=` on the command line; the laptop was moved, the shell died,
+  and three finished matches held scores that converted to nothing until the
+  ratings were fetched again. Now recorded as `ANCHORS_WINDOWS` in
+  `scripts/gauntlet.sh`. CCRL returns **403** to a plain fetcher -- use a browser
+  User-Agent.
+- **The 5+0 run never started and looked like it had.** It was an inline heredoc
+  that died at line 3 on an unterminated quote, wrote one error line to its log,
+  and exited. `scripts/gauntlet-later.sh` and `scripts/wait-for-machine.sh` now
+  hold the wait and the detach, which are the only parts that cannot go on a
+  command line safely. There is no per-time-control script: `lib.sh` already
+  reads `TC` from the environment.
+
+---
+
 ## The one thing that will trip you up
 
 **The net is not in git.** `nets/` and `*.nnue` are gitignored on purpose, so a
-fresh clone builds the *PSQT fallback* engine, which is ~360 Elo weaker. You cannot reproduce the 3195 measurement, and you cannot
+fresh clone builds the *PSQT fallback* engine, which is ~360 Elo weaker. You cannot reproduce the 3379 measurement, and you cannot
 SPRT anything about the evaluation, without the net file.
 
 The no-net and with-net bench counts are **per commit** — do not memorise a
-pair. At `main` today it is **6,951,633 without** and **4,772,409 with**; at
+pair. At `main` today it is **6,951,633 without** and **4,656,884 with**; at
 `base-phase6` it was 5,001,521 and 4,063,328. Always compare against the
 number in the state table for the commit you are standing on.
 

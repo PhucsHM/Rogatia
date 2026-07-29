@@ -13,11 +13,14 @@ Evaluation is a **self-trained NNUE**, `(768 -> 256)x2 -> 1` with SCReLU and an
 incremental accumulator, trained on 112 million of the engine's own self-play
 positions. All 33 search constants are exposed as UCI options.
 
-Latest measurement: **~3175 CCRL Blitz**, from a 720-game gauntlet against three
-CCRL-rated anchors. The arithmetic returns 3195 +/- 24; three caveats all push it
-down and none push it up, so ~3175 is the honest figure. All three anchors are
-versions of one engine, so a second family is needed before the number is worth
-publishing.
+Latest measurement: **3379 +/- 20 CCRL Blitz**, from a 540-game gauntlet against
+six CCRL-rated anchors across four engine families, run at `tc=120+1` — the
+control CCRL Blitz states for itself. The six implied values span 103 points and
+agree on the band rather than on the number.
+
+Not yet worth publishing: every anchor is rated 3160-3405, so none of them sits
+above the engine. The measurement can show the engine is around 3380; it cannot
+show what happens against stronger opposition, because it never faced any.
 
 Current work is aimed by measurement rather than by a feature list. Replaying the
 gauntlet showed that **19% of all games were positions the engine evaluated as

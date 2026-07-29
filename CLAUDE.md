@@ -110,25 +110,58 @@ Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake,
 
 Build with a net: `make EVALFILE=/abs/path/to/net.nnue`. Nets are gitignored; the Phase 6 net is `nets/rogatia-p6.nnue`, trained on 112,000,683 self-play positions. `make run-nnue EVALFILE=...` is the accumulator gate — treat it as perft for the evaluation.
 
-**Measured: ~3175 CCRL Blitz** (gauntlet arithmetic returns 3195 +/- 24; see `CHANGELOG.md`, "What the rating actually says" — three caveats, all pushing down). 720 games at 8+0.08, `8moves_v3.epd`, Hash=16, Threads=1, concurrency 6, home box, 2026-07-28, against a new anchor set that brackets the engine instead of sitting under it.
+**Measured: 3379 +/- 20 CCRL Blitz.** 540 games, 2026-07-29, `8moves_v3.epd`,
+Hash=16, Threads=1, split across both machines. Six anchors, four families.
+
+**At `tc=120+1`, which is the control CCRL Blitz states for itself** ("equivalent
+to 2'+1" on an Intel i7-4770K"). Every earlier figure in this file was measured
+at 8+0.08 and is not comparable to this one.
 
 | Opponent | CCRL Blitz | Games | W-L-D | Score | Implied Rogatia |
 |---|---|---|---|---|---|
-| Zahak 7.1 | 2972 +/- 18 | 240 | 175-14-51 | 83.5% | 3254 +/- 46 |
-| Zahak 8.0 | 3160 +/- 16 | 240 | 84-70-86 | 52.9% | 3180 +/- 39 |
-| Zahak 9.0 | 3292 +/- 12 | 240 | 37-120-83 | 32.7% | 3167 +/- 39 |
+| Zahak 8.0 | 3160 +/- 16 | 80 | 52-2-26 | 81.25% | 3415 +/- 72 |
+| Zahak 9.0 | 3292 +/- 12 | 80 | 22-12-46 | 56.25% | 3336 +/- 50 |
+| Zahak 10.0 | 3334 +/- 8 | 80 | 21-8-51 | 58.13% | 3391 +/- 43 |
+| Smallbrain 6.0 | 3361 +/- 15 | 100 | 29-11-60 | 59.00% | 3424 +/- 45 |
+| Clover 3.1 | 3399 +/- 11 | 100 | 11-33-56 | 39.00% | 3321 +/- 45 |
+| Alexandria 3.5 | 3405 +/- 13 | 100 | 26-25-49 | 50.50% | 3408 +/- 52 |
 
-Inverse-variance weighted: **3195 +/- 24**. The three anchors disagree by only 87 points, against 189 for the old set, and the two nearest an even score — the ones the Elo model handles best — agree to within 13. The 83.5% row reads high, which is the usual compression at a wide gap. **This is the first measurement since Phase 4 that is worth quoting**, because every anchor returned a usable number rather than saturating.
+Inverse-variance weighted: **3379 +/- 20**. Dropping the 81% Zahak 8.0 row, where
+the Elo model compresses, gives 3376 +/- 21 — the outlier is not carrying it.
 
-**Caveat: the three anchors are three versions of one engine**, so they share a playing style and are not fully independent the way three different engines would be. Zahak was chosen because it publishes a Linux binary for every version and its versions happen to span the band; Weiss and Simbelmyne have no usable Linux x86-64 assets, and Viridithas jumps 3244 -> 3423 with nothing between. Add a second family before treating 3195 as settled.
+This supersedes 3195, and the jump is explained: the p8a net SPRT'd at
+**+184.38 +/- 28.01** over the p6 net. 3195 + 184 lands where this measurement
+lands.
 
-**Deprioritised 2026-07-28.** The current rating is not what is being optimised, so
-whether ~3175 is exactly right changes no decision being made now. It matters again
-before a number is published anywhere.
+**Three caveats, and the third is the real one.**
 
-The previous anchor set (Toad 1776, Goldfish 2252, Blunder 8.5.5 2664) is retired: the engine scored 99.4%, 96.0% and 95.4% against them. Ratings read 2026-07-28 from `https://computerchess.org.uk/404/rating_list_all.html`.
+1. **80-100 games per anchor is thin.** The 3195 figure used 240 each, which is
+   why its bars read +/- 39-46 against +/- 43-72 here.
+2. **The six implied values span 103 points**, 3321 (Clover) to 3424
+   (Smallbrain). They agree on the band, not on the number.
+3. **Every anchor is rated 3160-3405, so none of them sits above the engine.**
+   This measurement can show the engine is *around* 3380; it cannot show what
+   happens against stronger opposition, because it never faced any.
 
-Reproduce: `CONCURRENCY=6 scripts/gauntlet.sh 240 ./rogatia`. Full protocol in `docs/TESTING.md`.
+That third caveat was half-closed and then reopened by choice. Stormphrax 5.0.0
+(3619) reached **20 games at 22.5%**, which converts to ~3404 and agrees with
+the rest — 22.5% is nowhere near the <5% saturation floor, so it was a usable
+anchor. It and Viridithas 15.0.0 (3681) were **cancelled on 2026-07-29** on the
+judgement that both are too far above to evaluate usefully. Re-run them before
+publishing this number anywhere; until then 3379 rests entirely on anchors the
+engine is level with or beating.
+
+**Reproduce:** `TC=120+1 scripts/gauntlet.sh 80 ./rogatia-p8a` on the home box
+(Linux anchors, the default set) and `TC=120+1 ANCHORS="$ANCHORS_WINDOWS"
+scripts/gauntlet.sh 100 ./rogatia-p8a` on the laptop.
+
+Two anchor sets are retired, both by saturation. Toad 1776, Goldfish 2252 and
+Blunder 8.5.5 2664: the engine scored 99.4%, 96.0% and 95.4%. Then Zahak 7.1
+2972, which gave 83.5% at the 3195 measurement and would now be worse. Ratings
+read from `https://computerchess.org.uk/404/rating_list_all.html` — fetch that
+page with a browser User-Agent, the plain one gets 403.
+
+Full protocol in `docs/TESTING.md`.
 
 Next concrete task: **drain the search queue, retune the parked patches, then run
 the end-of-phase gate at 20+0.2 before Phase 8.** SMP is
