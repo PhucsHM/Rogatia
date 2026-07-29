@@ -221,7 +221,11 @@ Move probe_root(const Position& pos) {
     // Match Fathom's suggestion against our own legal moves rather than
     // decoding its move encoding: a from/to/promotion triple is unambiguous,
     // and anything that fails to match is dropped instead of played.
-    static constexpr PieceType PromoOf[] = {NO_PIECE_TYPE, QUEEN, ROOK, BISHOP, KNIGHT};
+    // TB_GET_PROMOTES is a 3-bit field, so it can carry 0-7.  Fathom emits only
+    // 0-4, but this build is -DNDEBUG so Fathom's own asserts are gone -- size
+    // the table to the field, not to the values we expect.
+    static constexpr PieceType PromoOf[8] = {NO_PIECE_TYPE, QUEEN, ROOK, BISHOP, KNIGHT,
+                                             NO_PIECE_TYPE, NO_PIECE_TYPE, NO_PIECE_TYPE};
     const unsigned from = TB_GET_FROM(res), to = TB_GET_TO(res);
     const unsigned promo = TB_GET_PROMOTES(res);
 
@@ -696,7 +700,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     // even a full capture sequence cannot reach alpha there is nothing here.
     // Unlike a bare margin test this one is verified, which is what separates
     // it from the 2019-era razoring that measured at zero and was removed.
-    if (!PvNode && !excluded && !inCheck && !is_mate_score(alpha) && depth <= tunable::RazorDepth
+    if (!PvNode && !excluded && !inCheck && !is_decisive(alpha) && depth <= tunable::RazorDepth
         && staticEval + tunable::RazorMargin * depth < alpha) {
         const Score score = qsearch<false>(pos, ss, alpha - 1, alpha);
         if (score < alpha)
@@ -706,7 +710,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     // Reverse futility pruning: we are so far above beta that even giving up
     // the margin -- roughly a piece per ply of depth -- would not bring the
     // score back down.  Fail high on the static eval without searching.
-    if (!PvNode && !excluded && !inCheck && depth <= tunable::RfpDepth && !is_mate_score(beta)
+    if (!PvNode && !excluded && !inCheck && depth <= tunable::RfpDepth && !is_decisive(beta)
         && staticEval - tunable::RfpMargin * (depth - improving) >= beta)
         return staticEval;
 
@@ -718,7 +722,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     // ponytail: no verification search at high depth.  Upgrade path is a
     // re-search at depth-R with null move disabled before trusting the cutoff.
     if (!PvNode && !excluded && !inCheck && depth >= tunable::NmpDepth && staticEval >= beta
-        && (ss - 1)->currentMove != MOVE_NULL && !is_mate_score(beta)
+        && (ss - 1)->currentMove != MOVE_NULL && !is_decisive(beta)
         && (pos.pieces(pos.side_to_move()) & ~pos.pieces(PAWN) & ~pos.pieces(KING))) {
 
         const int R = tunable::NmpBase + depth / tunable::NmpDepthDiv
@@ -739,7 +743,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         // A mate score proved with a free move for the opponent is not a mate
         // we can actually deliver; report the bound instead.
         if (score >= beta)
-            return is_mate_score(score) ? beta : score;
+            return is_decisive(score) ? beta : score;
     }
 
     // Internal iterative reduction: no table move at this depth means no
@@ -786,7 +790,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         // remaining quiets are ordered so far down that searching them at all
         // is not worth it.  Only once something non-losing is already in hand,
         // so a node can never be left without a score.
-        if (!PvNode && !inCheck && isQuiet && best > -VALUE_MATE_IN_MAX_PLY
+        if (!PvNode && !inCheck && isQuiet && best > -VALUE_TB_WIN_IN_MAX_PLY
             && depth <= tunable::LmpDepth
             && moveCount >= tunable::LmpBase + depth * depth / (2 - improving))
             continue;
@@ -797,8 +801,8 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         // VALUE_NONE and the comparison is meaningless, and against a mate-score
         // alpha the test is true for everything, which would prune the mating
         // move along with the rest.
-        if (!PvNode && !inCheck && isQuiet && best > -VALUE_MATE_IN_MAX_PLY
-            && !is_mate_score(alpha) && depth <= tunable::FpDepth
+        if (!PvNode && !inCheck && isQuiet && best > -VALUE_TB_WIN_IN_MAX_PLY
+            && !is_decisive(alpha) && depth <= tunable::FpDepth
             && staticEval + tunable::FpMargin * depth <= alpha)
             continue;
 
@@ -807,7 +811,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         // score_move already computed for this move -- pick_next keeps moves
         // and scores in step -- so the test costs a load.  Killers and the TT
         // move carry large positive scores and can never trip it.
-        if (!PvNode && !inCheck && isQuiet && best > -VALUE_MATE_IN_MAX_PLY
+        if (!PvNode && !inCheck && isQuiet && best > -VALUE_TB_WIN_IN_MAX_PLY
             && depth <= tunable::HistPruneDepth
             && scores[i] < -tunable::HistPruneMargin * depth)
             continue;
@@ -816,7 +820,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         // left could plausibly win back.  Quiets are given a wider allowance --
         // a quiet move that hangs a piece is usually still a real idea, whereas
         // a capture that loses material rarely is.
-        if (!rootNode && best > -VALUE_MATE_IN_MAX_PLY && depth <= tunable::SeeDepth
+        if (!rootNode && best > -VALUE_TB_WIN_IN_MAX_PLY && depth <= tunable::SeeDepth
             && !see_ge(pos, m, -(isQuiet ? tunable::SeeQuietMargin : tunable::SeeNoisyMargin)
                                    * depth))
             continue;
@@ -836,7 +840,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         int extension = 0;
         if (!rootNode && !excluded && m == ttMove && depth >= tunable::SingularDepth
             && ttHit && tt.depth >= depth - 3 && (tt.bound & BOUND_LOWER)
-            && !is_mate_score(tt.score)) {
+            && !is_decisive(tt.score)) {
 
             const Score singularBeta = tt.score - tunable::SingularMargin * depth / 16;
 
@@ -1123,7 +1127,7 @@ void iterative_deepening(Position& pos, int maxDepth) {
         Score alpha = -VALUE_INFINITE;
         Score beta  = VALUE_INFINITE;
 
-        if (depth >= 4 && !is_mate_score(previous)) {
+        if (depth >= 4 && !is_decisive(previous)) {
             alpha = std::max(previous - delta, -VALUE_INFINITE);
             beta  = std::min(previous + delta, VALUE_INFINITE);
         }

@@ -14,18 +14,22 @@ namespace {
 // ply, so it has to store the distance from the mate instead and convert back
 // on the way out.  Getting this wrong makes the engine announce mates it
 // cannot deliver.
+// Both bands are distance-from-node in the table and distance-from-root
+// outside it.  Tablebase scores need this exactly as much as mate scores do:
+// tb_win_in(ply) encodes the root distance, so an entry written at ply 20 and
+// read at ply 30 would otherwise hand back an overstated bound.
 Score score_to_tt(Score s, int ply) {
-    if (s >= VALUE_MATE_IN_MAX_PLY)
+    if (s >= VALUE_TB_WIN_IN_MAX_PLY)
         return s + ply;
-    if (s <= -VALUE_MATE_IN_MAX_PLY)
+    if (s <= -VALUE_TB_WIN_IN_MAX_PLY)
         return s - ply;
     return s;
 }
 
 Score score_from_tt(Score s, int ply) {
-    if (s >= VALUE_MATE_IN_MAX_PLY)
+    if (s >= VALUE_TB_WIN_IN_MAX_PLY)
         return s - ply;
-    if (s <= -VALUE_MATE_IN_MAX_PLY)
+    if (s <= -VALUE_TB_WIN_IN_MAX_PLY)
         return s + ply;
     return s;
 }

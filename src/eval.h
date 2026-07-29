@@ -37,7 +37,17 @@ constexpr Score VALUE_TB_WIN_IN_MAX_PLY = VALUE_TB - MAX_PLY;
 constexpr Score tb_win_in(int ply)  { return VALUE_TB - ply; }
 constexpr Score tb_loss_in(int ply) { return -VALUE_TB + ply; }
 
-constexpr bool is_tb_score(Score s) {
+// True for a mate score OR a tablebase score, because the tablebase band sits
+// below the mate band and this test starts at the lower of the two.
+//
+// **Use this, not is_mate_score(), to guard anything that reasons about a
+// score as a normal centipawn value.**  A tablebase score is deliberately
+// invisible to is_mate_score(), so a guard written with that test alone lets
+// the whole tablebase band through.  Every pruning margin, the aspiration
+// window and the singular test need the union.  is_mate_score() is correct in
+// exactly one place: reporting "mate in N" over UCI, where a table hit knows
+// the result but not the distance.
+constexpr bool is_decisive(Score s) {
     return s >= VALUE_TB_WIN_IN_MAX_PLY || s <= -VALUE_TB_WIN_IN_MAX_PLY;
 }
 

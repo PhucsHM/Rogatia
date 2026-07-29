@@ -12,6 +12,7 @@
 
 #include "position.h"
 #include "search.h"
+#include "tbprobe.h"
 #include "tt.h"
 
 namespace rogatia {
@@ -61,6 +62,14 @@ int bench_depth_default() { return 12; }
 
 void run_bench(int depth) {
     TT.resize(BENCH_HASH_MB);
+
+    // Bench must never probe: the node count is the commit fingerprint and an
+    // OpenBench requirement, so it has to be identical with and without
+    // tablebases on disk.  `datagen` calls tb_init() and never frees, and it is
+    // reachable from the UCI loop -- so `datagen out.bin 1000` followed by
+    // `bench` in one session would otherwise bench with probing live.  Four of
+    // the bench positions are 3- and 4-piece endings, so it would really move.
+    tb_free();
 
     std::uint64_t total = 0;
     const auto    start = std::chrono::steady_clock::now();

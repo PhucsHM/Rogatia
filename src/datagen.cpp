@@ -297,9 +297,17 @@ void run(const Config& cfg) {
             const Color us         = pos.side_to_move();
             const int   whiteScore = (us == WHITE) ? r.score : -r.score;
 
-            // A mate score ends the game now: playing it out adds nothing and
-            // its positions are not the kind the net needs labelled.
-            if (is_mate_score(r.score)) {
+            // A decisive score ends the game now: playing it out adds nothing
+            // and its positions are not the kind the net needs labelled.
+            //
+            // This MUST test the union of the mate and tablebase bands.  With
+            // is_mate_score() alone a tablebase score -- deliberately invisible
+            // to that test -- fell through to the quiet filter below and was
+            // written as a training label of about 31753, roughly 79 pawns.
+            // Datagen calls tb_init(), so the search really can return one:
+            // the root probe needs five men or fewer, while the search's own
+            // WDL probe fires on any child that enters the table.
+            if (is_decisive(r.score)) {
                 whiteResult = (whiteScore > 0) ? 2 : 0;
                 break;
             }
