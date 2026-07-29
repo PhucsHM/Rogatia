@@ -560,6 +560,16 @@ Score qsearch(Position& pos, Stack* ss, Score alpha, Score beta) {
                 continue;
         }
 
+        // Record the move before recursing.  Without this, a qsearch node two
+        // or more plies deep scores its check evasions through cont_hist(ss-1)
+        // and cont_hist(ss-2) keyed on whatever move the last MAIN-search visit
+        // left in that stack slot -- a different position entirely.  Killers
+        // are stale the same way.  The first qsearch ply was fine because the
+        // parent search node filled ss-1.
+        ss->currentMove = m;
+        ss->movedPiece  = pos.piece_on(from_sq(m));
+        ss->movedTo     = to_sq(m);
+
         if (nnue::loaded())
             nnue::apply_move(pos, m, ss->acc, (ss + 1)->acc);
         pos.make_move(m);
@@ -755,7 +765,11 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     // all-nodes as well fires almost everywhere against a cold table and
     // compounds down the tree -- measured at -59% nodes, which is not a
     // reduction, it is searching a different and much shallower tree.
-    if ((PvNode || cutNode) && depth >= tunable::IirDepth && ttMove == MOVE_NONE)
+    // !excluded: a singular proof normally sees the TT move, so IIR is dead
+    // there.  But if a sibling subtree evicts the entry between the parent's
+    // probe and the proof's re-probe, the proof runs a ply shallower and proves
+    // less than it should.
+    if ((PvNode || cutNode) && !excluded && depth >= tunable::IirDepth && ttMove == MOVE_NONE)
         --depth;
 
     Move moves[MAX_MOVES];
@@ -1013,7 +1027,12 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         && !(bestMove != MOVE_NONE && pos.is_capture(bestMove))
         && (bound == BOUND_EXACT || (bound == BOUND_LOWER && best > staticEval)
             || (bound == BOUND_UPPER && best < staticEval)))
-        update_correction(pos, depth, best - staticEval);
+        // Not from a decisive score.  `best - staticEval` is then about 31,000,
+        // the clamp rails the slot to its full authority, and every quiet
+        // position sharing that pawn key inherits a bias with nothing to do
+        // with pawn structure.  The table exists to remove that kind of noise.
+        if (!is_decisive(best))
+            update_correction(pos, depth, best - staticEval);
 
     // rawEval, not staticEval -- see the note where the two are computed.
     if (!excluded)
@@ -1145,6 +1164,14 @@ void iterative_deepening(Position& pos, int maxDepth) {
                 beta  = (alpha + beta) / 2;
                 alpha = std::max(score - delta, -VALUE_INFINITE);
             } else if (score >= beta) {
+                // Bank the fail-high move before widening.  This iteration has
+                // already proved it is at least beta, and the widened re-search
+                // may be cut off by the hard limit -- in which case both breaks
+                // below skip the rootBestMove update and the engine plays the
+                // PREVIOUS iteration's move instead of the better one it just
+                // found.
+                if (W.pvLen[0] > 0)
+                    W.rootBestMove = W.pv[0][0];
                 beta = std::min(score + delta, VALUE_INFINITE);
             } else {
                 break;
