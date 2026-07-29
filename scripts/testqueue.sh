@@ -246,10 +246,10 @@ for entry in "${QUEUE[@]}"; do
         if [ -f "$resume" ]; then
             log "$name : resuming from $(basename "$resume") -- earlier games are kept"
             cp -f "$resume" config.json
-            $FASTCHESS -config file=config.json >> "$OUT/$name.log" 2>&1 &
+            "$FASTCHESS" -config file=config.json >> "$OUT/$name.log" 2>&1 &
         else
             # shellcheck disable=SC2086
-            $FASTCHESS \
+            "$FASTCHESS" \
                 -engine cmd="$devbin" name=dev $extra \
                 -engine cmd="$basebin" name=base \
                 -each tc="$TC" option.Hash="$HASH" option.Threads=1 $TB_OPT \
@@ -265,7 +265,14 @@ for entry in "${QUEUE[@]}"; do
         wait "$fc_pid"
         kill "$mon_pid" 2>/dev/null
 
-        started=$(grep -c 'Started game' "$OUT/$name.log" 2>/dev/null || echo 0)
+        # NO `|| echo 0` here. grep -c already prints 0 when it matches
+        # nothing, and EXITS 1 doing so -- so the fallback fired too and the
+        # variable became a TWO-LINE string, zero then zero. Every later [ -le ]
+        # test then failed with "integer expected", including the guard that
+        # stops a test being recorded as done -- so a queue that ran no games
+        # at all marked all five finished and drained in twenty seconds.
+        started=$(grep -c 'Started game' "$OUT/$name.log" 2>/dev/null)
+        started=${started:-0}
         [ "$started" -gt 8 ] && break
         [ $attempt -eq 1 ] && {
             log "$name : only $started games started -- retrying once with warm binaries"
