@@ -49,7 +49,11 @@
     X(SeeNoisyMargin,   30,    10,    120)      \
     X(HistBonusMul,    300,   100,    600)      \
     X(HistBonusSub,    250,     0,    600)      \
-    X(HistBonusMax,   2400,  1000,   4000)
+    X(HistBonusMax,   2400,  1000,   4000)      \
+    X(DoubleExtMargin,  16,     0,    128)      \
+    X(DoubleExtCap,      8,     0,     32)      \
+    X(NegExtBeta,        2,     0,      4)      \
+    X(NegExtCut,         1,     0,      4)
 
 namespace rogatia::tunable {
 

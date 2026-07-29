@@ -104,6 +104,11 @@ struct Stack {
     // move it is not allowed to see.
     Move   excludedMove = MOVE_NONE;
 
+    // How many double extensions this line has already taken.  Without a cap,
+    // extension == 2 grows depth every ply and the search never terminates in
+    // any useful time.
+    int    dblExt = 0;
+
     // The NNUE accumulator for the position at this ply, carried down the tree
     // incrementally rather than rebuilt.  Unused when no network is loaded.
     nnue::Accumulator acc{};
@@ -854,8 +859,31 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             if (aborted())
                 return VALUE_DRAW;
 
-            if (s < singularBeta)
+            if (s < singularBeta) {
                 extension = 1;
+
+                // Double extension.  Failing low by a wide margin says the TT
+                // move is not merely best, it is the only thing holding the
+                // position together.
+                //
+                // Capped cumulatively, and that cap is the whole safety story.
+                // extension == 2 makes fullDepth = depth + 1, so depth GROWS
+                // down the line: a chain of doubly-extended TT moves increases
+                // depth every ply until the MAX_PLY guard, which reads as a move
+                // that takes minutes rather than as a bug.  Stockfish caps this
+                // explicitly; so do we.
+                if (!PvNode && ss->dblExt < tunable::DoubleExtCap
+                    && s < singularBeta - tunable::DoubleExtMargin)
+                    extension = 2;
+            }
+            // Negative extension.  The proof said some OTHER move also reaches
+            // singularBeta, and the table says the TT move is already at or
+            // above beta -- so two moves beat beta here and the node is easy.
+            // Search it shallower instead of at full depth.
+            else if (tt.score >= beta)
+                extension = -tunable::NegExtBeta;
+            else if (cutNode)
+                extension = -tunable::NegExtCut;
         }
 
         ss->currentMove = m;
@@ -870,7 +898,12 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         // carry one, and the TT move is almost always moveCount 1, but both
         // branches read it so a pruned or illegal TT move cannot desynchronise
         // the two.  With extension == 0 every expression below is unchanged.
-        const int fullDepth = depth - 1 + extension;
+        // A negative extension can drive this below zero; clamp at 0 so the node
+        // drops into quiescence rather than searching at depth 1 forever.
+        const int fullDepth = std::max(depth - 1 + extension, 0);
+
+        // Carry the double-extension count down the line.
+        (ss + 1)->dblExt = ss->dblExt + (extension == 2 ? 1 : 0);
 
         Score score;
         if (moveCount == 1) {
