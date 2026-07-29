@@ -3,12 +3,6 @@
 Target: **3500+ CCRL Blitz**. Blitz-optimized — measured on CCRL Blitz and tuned
 at the time control it plays.
 
-**No per-phase Elo gates, and no time estimates.** Earlier versions of this file
-had both, and both were wrong: the phase targets ended up below the strength the
-engine had already reached, which makes a roadmap worse than useless. Phases here
-are *ordered work*. Measurements are recorded as history, after the fact, in the
-table at the bottom.
-
 ## What moves the number
 
 | | What it is | Where the Elo comes from |
