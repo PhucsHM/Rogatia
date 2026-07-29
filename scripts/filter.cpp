@@ -227,7 +227,10 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "thinning   keeping %llu of %llu, evenly spaced\n",
                              (unsigned long long) target, (unsigned long long) survivors);
         } else {
-            std::fclose(out);
+            if (std::fclose(out) != 0) {
+                std::fprintf(stderr, "cannot flush %s -- disk full?\n", outPath);
+                return 1;
+            }
             std::fprintf(stderr, "written    %llu positions to %s\n",
                          (unsigned long long) kept, outPath);
             written = kept;
@@ -283,13 +286,30 @@ int main(int argc, char** argv) {
         std::memcpy(b, tmp, REC);
     }
 
-    g = std::fopen(outPath, "wb");
-    if (!g || std::fwrite(all.data(), 1, bytes, g) != bytes) {
-        std::fprintf(stderr, "shuffle    cannot rewrite %s\n", outPath);
-        if (g) std::fclose(g);
+    // Write to a temp and rename, rather than truncating the good output and
+    // hoping.  A 15 GB fwrite that runs out of disk surfaces the error at the
+    // FLUSH inside fclose, not at fwrite -- so an unchecked fclose here would
+    // leave a truncated corpus and still return success.
+    const std::string tmpPath = std::string(outPath) + ".tmp";
+    g = std::fopen(tmpPath.c_str(), "wb");
+    if (!g || std::fwrite(all.data(), 1, bytes, g) != bytes || std::fclose(g) != 0) {
+        std::fprintf(stderr, "shuffle    cannot write %s -- %s left intact, unshuffled\n",
+                     tmpPath.c_str(), outPath);
+        std::remove(tmpPath.c_str());
         return 1;
     }
-    std::fclose(g);
+    // Remove the destination first.  std::rename overwrites on POSIX but FAILS
+    // on Windows when the target exists, and this tool runs on both.  That
+    // leaves a brief window with neither file, which is acceptable: the whole
+    // corpus is still in memory, and the failure mode it replaces was a silent
+    // truncation reported as success.
+    std::remove(outPath);
+    if (std::rename(tmpPath.c_str(), outPath) != 0) {
+        std::fprintf(stderr, "shuffle    cannot rename %s over %s -- the shuffled data is in\n"
+                             "           the .tmp file, rename it by hand\n",
+                     tmpPath.c_str(), outPath);
+        return 1;
+    }
     std::fprintf(stderr, "shuffled   %llu positions, %.1f GB, fixed seed\n",
                  (unsigned long long) written, double(bytes) / 1e9);
     return 0;
