@@ -41,7 +41,8 @@ The split is by *what each machine is better at*, not by which one is "the dev b
 ```bash
 make                      # optimized native build -> ./rogatia
 make debug                # -O0 -g + ASan/UBSan
-make release              # portable x86-64-v3 static build
+make release              # portable x86-64-v3 static build, black magic sliders
+make release-pext         # the same with PEXT -- only for a known Haswell+/Zen 3+ CPU
 make run-perft            # the Phase 1 correctness gate
 make bench                # deterministic node-count fingerprint
 ```

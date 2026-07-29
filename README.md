@@ -53,7 +53,7 @@ Rogatia speaks [UCI](https://www.chessprogramming.org/UCI) and runs in any stand
 | Area | Choice |
 |---|---|
 | Board | Bitboards, piece-centric, with a redundant mailbox for O(1) square lookup |
-| Sliding attacks | Black magic bitboards, with a PEXT path behind `__BMI2__` |
+| Sliding attacks | Black magic bitboards, with an opt-in PEXT path (`make release-pext`) |
 | Move generation | Pseudo-legal, generated in one pass, with a legality filter and a selection-sort picker |
 | State | Make/unmake with an explicit undo stack |
 | Evaluation | NNUE `(768 -> 256)x2 -> 1`, SCReLU, incremental; tapered PSQT as the no-net fallback |

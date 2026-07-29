@@ -16,7 +16,7 @@ The line is procedural, not just legal. Read a technique, close the file, implem
 |---|---|---|
 | Bitboard representation | CPW: Bitboards | Standard piece-centric layout, universal across engines |
 | Black magic bitboards | CPW: Magic Bitboards; Analog Hors, "Magic Bitboards" (analog-hors.github.io) | Magic constants generated locally by seeded search, not copied from any engine's table |
-| PEXT sliding attacks | CPW: BMI2, PEXT Bitboards | Alternative path behind `__BMI2__`; kept perft-diffable against the magic path |
+| PEXT sliding attacks | CPW: BMI2, PEXT Bitboards | Opt-in path behind `ROGATIA_PEXT`, not `__BMI2__`: PEXT is microcoded on Zen 1/2. Both indexers verified against the ray-walk reference at the same perft and bench |
 | Zobrist hashing | CPW: Zobrist Hashing | Fixed-seed splitmix64 for cross-machine determinism (OpenBench requirement) |
 | Five key sets (main/pawn/non-pawn/major/minor) | CPW: Static Evaluation Correction History | Added early because retrofitting them through make/unmake later is painful |
 | Make/unmake with undo stack | CPW: Make Move, Unmake Move | Chosen over copy-make because accumulators and five keys make copying expensive |

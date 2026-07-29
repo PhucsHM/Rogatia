@@ -892,23 +892,81 @@ that morning fixed a real overflow but widened BEFORE the multiply, making it a
 64-bit multiply per term and suppressing vectorisation. The overflow was only
 ever in the sum. Same safety, no cost, by moving one cast.
 
-### Found and not yet done
+### The rest of that list, landed 2026-07-29
 
-- **`zobrist::Psq` is set-major.** Proven from disassembly: the five keys for one
-  (piece, square) sit **8 KB apart -- five cache lines and five pages** -- and
-  `update_keys` runs 4-6 times per `make_move`. Transposing puts them in 40
-  contiguous bytes. 1.5-3%. **Keep the fill loop order EXACTLY as-is or every
-  key changes.**
-- **`lmr_base()` does two real `idiv`s per late move**, because `tunable::` are
-  mutable globals nothing can constant-fold. 8,192 distinct results -- table it.
-  2-5%.
-- **Redundant SEE.** `score_move` already ran `see_ge(m, -20)`; the pruning test
-  re-runs SEE on the same move. Monotonicity makes the first verdict imply the
-  second. Found independently by two agents, both deriving the same guard:
-  `SeeNoisyMargin` is SPSA-tunable to 10, where the implication breaks.
-- Correction tables are `int` where values are clamped to +-8192 (two agents).
-- `see_ge`'s x-ray refresh recomputes the slider union every iteration and does
-  a magic lookup even when no slider of that class points at the square.
+Same gate throughout: `bench` printing **4,656,884** and nothing else. Every one
+of these is bit-identical by construction, so an equal bench is the proof the
+patch is right, not a disappointment.
+
+| Change | Commit | What it was |
+|---|---|---|
+| `zobrist::Psq` piece-major | `60cbd32` | Five keys for one (piece, square) sat 8 KB apart; now 40 contiguous bytes |
+| Correction tables `int16` | `617fc36` | Slots clamped to +-8192 in an `int`; 256 KB -> 128 KB |
+| Skip the second SEE | `81e6024` | `score_move` had already proved the capture good |
+| Hoist the SEE slider unions | `aa0559d` | Rebuilt from two loads on every x-ray refresh |
+| `make release` off PEXT | `719c8bf` | See below |
+
+Two of the review's numbers did not survive contact.
+
+**The SEE skip is worth far less than the 1-4% claimed.** An instrumented build
+counted it over the whole bench: it fires on **163,108 of every 2,000,000** SEE
+pruning tests, 8.2%, and disagreed with the full exchange zero times. The cap is
+structural -- the test runs on every move and quiets dominate, so the noisy-move
+share is the ceiling. It is free and it is proven, but call it well under 1%.
+
+**`lmr_base()` does one `idiv`, not two.** The claim was that both divisions
+issue because `tunable::` cannot be constant-folded. Compiling `search.cpp` to
+assembly refutes it: the function is a **ternary**, and gcc branched rather than
+`cmov`ing over both divisions -- `LmrNoisyDiv` and `LmrQuietDiv` appear at
+separate sites on separate paths. The quiet path does still pay two, but the
+second is `LmrHistDiv` in the history term, which no table can remove.
+
+**So the table is not built.** At one division the 2-5% estimate roughly halves,
+against a `[2][64][64]` int16 table of 16 KB competing for a 32 KB L1D -- it
+could easily be net negative. Worse, a table not rebuilt on `setoption` makes
+`LmrQuietDiv` and `LmrNoisyDiv` **silently inert**, which would quietly poison
+an OpenBench SPSA run. It needs a timing run to justify, and the queue owns the
+machine. Left open, with the reason recorded rather than the estimate.
+
+The `see_ge` early-out -- skip the magic lookup when no slider of that class
+bears on the square at all -- is open for the same reason: it adds a lookup up
+front to save lookups later, so it is a measurement question, not a reasoning
+one.
+
+### The two slider indexers have now been compared
+
+`make release` compiled the PEXT indexer, because BMI2 is part of `x86-64-v3`.
+So does **Zen 1, Zen 2 and Excavator**, where PEXT is microcoded and much slower
+than the multiply-shift it replaces -- and `release` is the binary other people
+run. The path is now chosen by `ROGATIA_PEXT`: `make release` defines
+`ROGATIA_NO_PEXT` and takes black magic, `make release-pext` opts back in for a
+known Haswell-or-later or Zen-3-or-later target. `make` (native) is unchanged.
+
+The earlier entry below says no build had ever run `verify_slider_tables()` with
+PEXT. That was **half wrong**: `run_perft.cpp` calls it directly rather than
+through an `assert`, so the native build has been checking PEXT against the
+ray-walk reference on every perft run. The black-magic build was the one nothing
+had executed. Both now agree:
+
+| Indexer | bench | perft |
+|---|---|---|
+| PEXT | 4,656,884 | 37/37, 626,461,214 |
+| black magic | 4,656,884 | 37/37, 626,461,214 |
+
+Equal bench across the two also holds up the OpenBench rule that the count must
+not move with the `-march` level.
+
+### The perft gate printed its verdict in the wrong place
+
+Fixed in `90a87cb`. The per-depth lines and the summary went to `std::printf`
+while the FENs went to `std::cout`, and the two carry separate buffers: redirect
+the run to a file and `tail` showed a bare FEN and no result, which reads
+exactly like a crash. It cost a real diagnosis before anyone noticed the output
+was simply out of order.
+
+That is the same defect class as the `std::ifstream` segfault this runner was
+rescued from hours earlier. **A gate whose output reads as a failure is worse
+than no gate**, and this file has now produced two of them in one day.
 
 ### Two latent bugs, neither about speed
 
@@ -921,15 +979,23 @@ ever in the sum. Same safety, no cost, by moving one cast.
   part of `x86-64-v3`, which is also satisfied by Zen 1, Zen 2 and Excavator,
   where PEXT is microcoded. That is the binary a rating list runs. Stockfish
   keeps `USE_PEXT` as a separate target for exactly this reason.
+  *(Fixed the same day in `719c8bf` -- see "The two slider indexers have now
+  been compared" above.)*
 
 ### The assert added that morning never ran
 
 `verify_slider_tables()` was added to prove the black-magic and PEXT paths
 agree. `native` and `release` both carry `-DNDEBUG` so the assert compiles out;
 `debug` keeps asserts but passes **no `-march` flag**, so `__BMI2__` is
-undefined and it takes the black-magic path. **No build this project runs has
-ever executed that assert with PEXT enabled.** Add `-march=native` to the debug
+undefined and it takes the black-magic path. Add `-march=native` to the debug
 flags.
+
+**Correction, same day.** The conclusion drawn here -- that no build had ever
+executed the check with PEXT -- was wrong, and only the `assert` reasoning was
+right. `run_perft.cpp` calls `verify_slider_tables()` **directly**, not through
+an `assert`, so `-DNDEBUG` never removed it and the native PEXT build has been
+checking itself on every perft run. The build that had genuinely never run was
+the black-magic one. Both were compared for the first time in `719c8bf`.
 
 ### `phase7-dblext2` would have measured the wrong thing
 
