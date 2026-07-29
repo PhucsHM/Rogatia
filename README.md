@@ -36,7 +36,7 @@ at the root.
 incremental accumulator, trained on 160 million positions from the engine's own
 self-play. Tapered PSQT is the fallback when no net is loaded.
 
-All 33 search constants are exposed as UCI options so a tuner can drive them
+All 35 search constants are exposed as UCI options so a tuner can drive them
 without a recompile.
 
 Move generation is perft-exact: 37/37 checks, 626,461,214 nodes.
@@ -67,6 +67,24 @@ clone builds the PSQT fallback, which is roughly 360 Elo weaker. Build with
 
 Rogatia speaks [UCI](https://www.chessprogramming.org/UCI) and runs in any
 standard chess GUI.
+
+**Keep the `.nnue` file next to the binary.** The release looks for its net
+beside itself, so no setup is needed as long as the two stay together. If you
+move the net elsewhere, point at it with the `EvalFile` UCI option.
+
+If the net is not found the engine says so and plays on with the piece-square
+fallback, which is roughly 360 Elo weaker — so if the strength looks wrong, that
+is the first thing to check:
+
+```
+info string eval: FAILED to load ...
+```
+
+A quick check that it loaded correctly — this must print **4656884**:
+
+```bash
+./rogatia bench
+```
 
 ## Design notes
 
