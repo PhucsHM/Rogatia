@@ -37,9 +37,13 @@ mkdir -p "$OUT"
 
 TC=8+0.08
 HASH=16
-CONCURRENCY=8        # physical cores only: SMT siblings distort timing at 8+0.08
+# Physical cores only: SMT siblings distort timing at 8+0.08.  Overridable,
+# because the two boxes differ -- the laptop has 10 physical cores and the home
+# box 8, so a hardcoded 8 oversubscribes the smaller one.
+CONCURRENCY=${CONCURRENCY:-8}
 BOOK=books/UHO_Lichess_4852_v1.epd
-FASTCHESS=./tools/fastchess.exe
+# FASTCHESS comes from lib.sh, which picks .exe only when one exists. This used
+# to be hardcoded to tools/fastchess.exe, which cannot run on the Linux box.
 
 # name | dev | base | elo0 | elo1 | extra args for dev only
 #
@@ -149,8 +153,14 @@ for entry in "${QUEUE[@]}"; do
         log "$name : already finished, skipping"
         continue
     fi
-    if [ ! -f "./$dev.exe" ] || [ ! -f "./$base.exe" ]; then
-        log "$name : SKIPPED -- missing $dev.exe or $base.exe. Build and gate it, then rerun."
+    # bin() picks the .exe only where one exists, so this runs on both boxes.
+    # The check used to be hardcoded to "$dev.exe", which on Linux is never
+    # there -- every test would have logged SKIPPED and the queue would have
+    # drained in seconds having run nothing.
+    devbin=$(bin "./$dev")
+    basebin=$(bin "./$base")
+    if [ ! -x "$devbin" ] || [ ! -x "$basebin" ]; then
+        log "$name : SKIPPED -- missing $devbin or $basebin. Build and gate it, then rerun."
         continue
     fi
 
@@ -158,7 +168,7 @@ for entry in "${QUEUE[@]}"; do
 
     # Both binaries, every test. A patch measured against a base that failed to
     # load tablebases is measuring the tablebases, not the patch.
-    if ! verify_tb "./$dev" || ! verify_tb "./$base"; then
+    if ! verify_tb "$devbin" || ! verify_tb "$basebin"; then
         log "$name : SKIPPED -- tablebases did not load; fix that before testing"
         continue
     fi
@@ -240,8 +250,8 @@ for entry in "${QUEUE[@]}"; do
         else
             # shellcheck disable=SC2086
             $FASTCHESS \
-                -engine cmd="./$dev" name=dev $extra \
-                -engine cmd="./$base" name=base \
+                -engine cmd="$devbin" name=dev $extra \
+                -engine cmd="$basebin" name=base \
                 -each tc="$TC" option.Hash="$HASH" option.Threads=1 $TB_OPT \
                 -openings file="$BOOK" format=epd order=random \
                 -sprt elo0="$elo0" elo1="$elo1" alpha=0.05 beta=0.05 model=normalized \
