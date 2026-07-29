@@ -478,6 +478,10 @@ Score qsearch(Position& pos, Stack* ss, Score alpha, Score beta) {
     TTData tt;
     const bool ttHit = TT.probe(pos.key(), ss->ply, tt);
 
+    // Sticky: once a node has been on the PV it stays marked through the table,
+    // so a quiescence store must not clear a flag a deeper search set.
+    const bool ttPv = PvNode || (ttHit && tt.pv);
+
     if (!PvNode && ttHit && tt.depth >= 0
         && (tt.bound == BOUND_EXACT || (tt.bound == BOUND_LOWER && tt.score >= beta)
             || (tt.bound == BOUND_UPPER && tt.score <= alpha)))
@@ -497,7 +501,7 @@ Score qsearch(Position& pos, Stack* ss, Score alpha, Score beta) {
         // floor on what this node is worth.
         best = staticEval;
         if (best >= beta) {
-            TT.store(pos.key(), ss->ply, 0, BOUND_LOWER, MOVE_NONE, best, rawEval, PvNode);
+            TT.store(pos.key(), ss->ply, 0, BOUND_LOWER, MOVE_NONE, best, rawEval, ttPv);
             return best;
         }
         if (best > alpha)
@@ -586,7 +590,7 @@ Score qsearch(Position& pos, Stack* ss, Score alpha, Score beta) {
         return mated_in(ss->ply);
 
     const Bound bound = (best >= beta) ? BOUND_LOWER : BOUND_UPPER;
-    TT.store(pos.key(), ss->ply, 0, bound, bestMove, best, rawEval, PvNode);
+    TT.store(pos.key(), ss->ply, 0, bound, bestMove, best, rawEval, ttPv);
     return best;
 }
 
@@ -632,6 +636,15 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
 
     TTData tt;
     const bool ttHit = TT.probe(pos.key(), ss->ply, tt);
+
+    // This node is on the PV, or the table remembers it as having been.
+    //
+    // A LOCAL, deliberately, not a Stack field.  The singular proof re-enters
+    // search() at THIS SAME stack slot with PvNode false; a stack field would be
+    // recomputed there and overwritten with just tt.pv, un-sticking the flag at
+    // exactly the deep PV nodes the feature exists for.  Nothing reads it across
+    // plies, so a local is both correct and cheaper.
+    const bool ttPv = PvNode || (ttHit && tt.pv);
 
     if (!PvNode && !excluded && ttHit && tt.depth >= depth
         && (tt.bound == BOUND_EXACT || (tt.bound == BOUND_LOWER && tt.score >= beta)
@@ -888,7 +901,19 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
                 int r = lmr_base(!isQuiet, depth, moveCount);
 
                 r += cutNode * tunable::LmrCutNode;  // by far the largest term
-                r -= PvNode * LMR_SCALE;
+                // Graded, not flat.  A blanket ply off every table-remembered PV
+                // node costs about 17% more nodes and buys nothing, because the
+                // flag is sticky and weakens LMR everywhere it has ever been set.
+                // Stockfish conditions the exemption on the TT entry still being
+                // CREDIBLE -- deep enough, and its score still beating alpha --
+                // and that grading is what makes it pay.
+                if (ttPv)
+                    r -= tunable::TtPvRed + PvNode * tunable::TtPvPv
+                       + (ttHit && tt.score > alpha) * tunable::TtPvAlpha
+                       + (ttHit && tt.depth >= depth)
+                             * (tunable::TtPvDepth + cutNode * tunable::TtPvCut);
+                else
+                    r -= PvNode * LMR_SCALE;
                 r -= improving * LMR_SCALE;
                 r -= inCheck * LMR_SCALE;
                 if (isQuiet) {
@@ -1017,7 +1042,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
 
     // rawEval, not staticEval -- see the note where the two are computed.
     if (!excluded)
-        TT.store(pos.key(), ss->ply, depth, bound, bestMove, best, rawEval, PvNode);
+        TT.store(pos.key(), ss->ply, depth, bound, bestMove, best, rawEval, ttPv);
 
     return best;
 }

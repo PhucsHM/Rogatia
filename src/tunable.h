@@ -49,7 +49,12 @@
     X(SeeNoisyMargin,   30,    10,    120)      \
     X(HistBonusMul,    300,   100,    600)      \
     X(HistBonusSub,    250,     0,    600)      \
-    X(HistBonusMax,   2400,  1000,   4000)
+    X(HistBonusMax,   2400,  1000,   4000)      \
+    X(TtPvRed,         256,     0,   6000)      \
+    X(TtPvPv,         1024,     0,   3000)      \
+    X(TtPvAlpha,       768,     0,   3000)      \
+    X(TtPvDepth,       768,     0,   3000)      \
+    X(TtPvCut,         512,     0,   3000)
 
 namespace rogatia::tunable {
 
