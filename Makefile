@@ -9,7 +9,8 @@
 #   make                  optimized native build   -> ./rogatia
 #   make debug            -O0 -g, asserts on, UBSan/ASan
 #   make perft            standalone perft test runner
-#   make release          portable AVX2 build for distribution
+#   make release          portable AVX2 build for distribution (no PEXT)
+#   make release-pext     the same, with PEXT -- only for a known-good CPU
 
 EXE       ?= rogatia
 CXX       ?= clang++
@@ -73,6 +74,15 @@ ifeq ($(build),native)
 	CXXFLAGS += -O3 -march=native -DNDEBUG $(LTOFLAGS)
 	LDFLAGS  += $(LTOFLAGS)
 else ifeq ($(build),release)
+	# -DROGATIA_NO_PEXT: BMI2 is part of x86-64-v3, so this target would
+	# otherwise compile the PEXT indexer -- and x86-64-v3 is also satisfied by
+	# Zen 1, Zen 2 and Excavator, where PEXT is microcoded and much slower than
+	# the multiply-shift it replaces.  This is the binary other people run, so
+	# it takes the path that is fast everywhere.  `make release-pext` opts in.
+	CXXFLAGS += -O3 -march=x86-64-v3 -mtune=generic -DNDEBUG -DROGATIA_NO_PEXT \
+	            $(LTOFLAGS) -static
+	LDFLAGS  += $(LTOFLAGS) -static
+else ifeq ($(build),release-pext)
 	CXXFLAGS += -O3 -march=x86-64-v3 -mtune=generic -DNDEBUG $(LTOFLAGS) -static
 	LDFLAGS  += $(LTOFLAGS) -static
 else ifeq ($(build),debug)
@@ -84,7 +94,7 @@ else ifeq ($(build),debug)
 	LDFLAGS  += -fsanitize=address,undefined
 endif
 
-.PHONY: all debug release perft bench run-perft nnue-test run-nnue keycheck run-keycheck filter clean format
+.PHONY: all debug release release-pext perft bench run-perft nnue-test run-nnue keycheck run-keycheck filter clean format
 
 all: $(EXE)
 
@@ -93,6 +103,12 @@ debug:
 
 release:
 	@$(MAKE) build=release EXE=$(EXE) --no-print-directory
+
+# Same portable target with the PEXT indexer turned back on.  Faster on Intel
+# Haswell and later and on Zen 3 and later; much SLOWER on Zen 1, Zen 2 and
+# Excavator.  Only build this when you know which CPU will run it.
+release-pext:
+	@$(MAKE) build=release-pext EXE=$(EXE) --no-print-directory
 
 $(EXE): $(OBJECTS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^

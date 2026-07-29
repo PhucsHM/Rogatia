@@ -6,7 +6,21 @@
 #include "bitboard.h"
 #include "types.h"
 
-#ifdef __BMI2__
+// PEXT is opt-in, NOT a side effect of the -march level.
+//
+// BMI2 belongs to x86-64-v3, which Zen 1, Zen 2 and Excavator also satisfy --
+// and on those PEXT is microcoded and far slower than the multiply-shift it
+// replaces.  `make release` targets x86-64-v3 and is the binary a rating list
+// runs, so it must not assume the machine that built it.  `make release-pext`
+// opts in, and is right on Intel Haswell or later and on Zen 3 or later, where
+// PEXT is a 3-cycle instruction.
+//
+// `make` (native) keeps PEXT: both development machines are Zen 4 or Zen 5.
+#if defined(__BMI2__) && !defined(ROGATIA_NO_PEXT)
+#define ROGATIA_PEXT 1
+#endif
+
+#ifdef ROGATIA_PEXT
 #include <immintrin.h>
 #endif
 
@@ -34,7 +48,7 @@ struct Magic {
     unsigned  shift;    // 64 - popcount(mask)
 
     unsigned index(Bitboard occ) const {
-#ifdef __BMI2__
+#ifdef ROGATIA_PEXT
         return unsigned(_pext_u64(occ, mask));
 #else
         return unsigned(((occ | ~mask) * magic) >> shift);

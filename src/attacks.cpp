@@ -82,7 +82,7 @@ namespace {
 void build_magics(PieceType pt, Bitboard* table, Magic magics[]) {
     static Bitboard occs[4096];
     static Bitboard refs[4096];
-#ifndef __BMI2__
+#ifndef ROGATIA_PEXT
     // Collision detection scratch for the magic search; `cnt` is the epoch, so
     // the array never needs clearing between candidates.
     static int epoch[4096];
@@ -118,7 +118,7 @@ void build_magics(PieceType pt, Bitboard* table, Magic magics[]) {
         assert(n == (1 << popcount(m.mask)));
         offset += n;
 
-#ifdef __BMI2__
+#ifdef ROGATIA_PEXT
         m.magic = 0;
         for (int k = 0; k < n; ++k)
             m.attacks[m.index(occs[k])] = refs[k];
