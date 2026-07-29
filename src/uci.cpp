@@ -11,6 +11,7 @@
 #include "bench.h"
 #include "datagen.h"
 #include "movegen.h"
+#include "nnue.h"
 #include "perft.h"  // move_to_uci
 #include "position.h"
 #include "search.h"
@@ -26,6 +27,15 @@ constexpr const char* StartFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w 
 
 constexpr int HASH_DEFAULT = 16;
 constexpr int MOVE_OVERHEAD_DEFAULT = 10;
+
+// What `uci` advertises as the EvalFile default, purely so the user can see
+// which net the binary was built to look for.  A release bakes a RELATIVE name
+// here, so the net sitting beside the binary is found without any setup.
+#ifdef EVALFILE
+constexpr const char* EvalFileDefault = EVALFILE;
+#else
+constexpr const char* EvalFileDefault = "<none>";
+#endif
 
 struct Engine {
     Position    pos;
@@ -160,6 +170,22 @@ void cmd_setoption(Engine& e, std::istringstream& is) {
         TT.resize(std::size_t(e.hashMb));
     } else if (name == "Move Overhead") {
         e.moveOverhead = std::clamp(parse_int(value, MOVE_OVERHEAD_DEFAULT), 0, 5000);
+    } else if (name == "EvalFile") {
+        // The net is not in the repository and a released binary carries only a
+        // RELATIVE default, so a user whose net is somewhere else has to be able
+        // to say where.  Without this option the only lever was the EVALFILE
+        // environment variable, which a chess GUI gives you no way to set --
+        // the engine would fall back to the piece-square tables and play on
+        // about 360 Elo weaker, reporting the failure on stderr where most GUIs
+        // never show it.
+        //
+        // Reported on stdout as `info string`, which GUIs do display.
+        if (nnue::load(value.c_str()))
+            std::cout << "info string eval: loaded " << value << '\n' << std::flush;
+        else
+            std::cout << "info string eval: FAILED to load " << value
+                      << " -- playing with the piece-square fallback, about 360 Elo weaker\n"
+                      << std::flush;
     } else if (name == "SyzygyPath") {
         // Until this arrives TB_LARGEST is zero and the search never probes,
         // which is what keeps `bench` identical on a machine with tablebases
@@ -203,6 +229,7 @@ void uci_loop() {
                       << "option name Move Overhead type spin default " << MOVE_OVERHEAD_DEFAULT
                       << " min 0 max 5000\n"
                       << "option name SyzygyPath type string default <empty>\n"
+                      << "option name EvalFile type string default " << EvalFileDefault << "\n"
                       << std::flush;
             tunable::print_options();
             std::cout << "uciok\n" << std::flush;

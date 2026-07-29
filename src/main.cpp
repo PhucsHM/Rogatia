@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 #include "bench.h"
 #include "datagen.h"
@@ -17,15 +18,38 @@ int main(int argc, char** argv) {
     // EVALFILE is baked in at build time and may be overridden at runtime, so a
     // net can be swapped without a rebuild while it is still being iterated on.
 #ifdef EVALFILE
-    const char* netPath = std::getenv("EVALFILE");
-    const char* netUsed = netPath && *netPath ? netPath : EVALFILE;
+    const char* env = std::getenv("EVALFILE");
+    std::string netUsed = (env && *env) ? env : EVALFILE;
+
+    bool netOk = rogatia::nnue::load(netUsed.c_str());
+
+    // A RELEASE bakes a relative net name, so the file sitting beside the
+    // binary is found with no setup at all.  But a GUI may launch the engine
+    // from any working directory, and then that relative name resolves to
+    // nothing -- measured, not guessed: run from another directory the release
+    // printed "NNUE load FAILED" and benched the no-net count, which is a
+    // silent ~360 Elo loss for anyone who downloads it.
+    //
+    // So try again beside the executable itself before giving up.
+    if (!netOk && netUsed.find_first_of("/\\") == std::string::npos) {
+        const std::string self(argv[0] ? argv[0] : "");
+        const auto        cut = self.find_last_of("/\\");
+        if (cut != std::string::npos) {
+            const std::string beside = self.substr(0, cut + 1) + netUsed;
+            if (rogatia::nnue::load(beside.c_str())) {
+                netUsed = beside;
+                netOk   = true;
+            }
+        }
+    }
+
     // Say so when the net does not load.  Silence here costs about 360 Elo --
     // the engine falls back to the piece-square tables and plays on happily.
     // `bench` would catch it, but a game never runs bench, so a whole SPRT can
     // measure the wrong engine and report a clean, believable result.
-    if (!rogatia::nnue::load(netUsed))
+    if (!netOk)
         std::fprintf(stderr, "info string NNUE load FAILED for %s -- using the PSQT fallback\n",
-                     netUsed);
+                     netUsed.c_str());
     else {
         // Sanity-check the eval SCALE against the net that just loaded.  SCALE
         // is a property of the trained net, not of this code, so it cannot be
