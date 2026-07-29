@@ -86,6 +86,50 @@ published anywhere.
 
 ---
 
+## 2026-07-29 -- the three timing questions, measured on an idle machine
+
+These three were left open because they were cache-behaviour questions and the
+box had been running matches all day. With both machines free they were measured
+properly: **interleaved A/B**, alternating the two binaries so thermal drift and
+background noise hit both equally, medians of 9 to 25 pairs, `bench` depth 15 for
+a lower noise floor. Every one is bit-identical, so the node count is the gate
+and only the time differs.
+
+| Change | Result | Verdict |
+|---|---|---|
+| `Magic` struct, 32 -> 16 bytes under PEXT | +0.89%, -0.04%, +0.40% | **kept** |
+| `see_ge` magic-lookup early-out | +1.52%, +0.38%, -0.26% | **reverted** |
+| `contHist` 16 -> 12 piece slots | -1.19%, -1.66%, -1.17% | **reverted** |
+
+**Two of the three were wrong, and only measurement could say so.** The estimates
+had them at 1-4%, 1-4% and 0.5-1.5% respectively.
+
+### `contHist` was the instructive failure
+
+Packing `Piece` (encoded 1..6 and 9..14) into a dense 0..11 takes the table from
+2 MB to 1.125 MB, and it is **reliably 1.3% slower**. Halving the footprint did
+not matter; changing the strides did. `[16][64][16][64]` indexes with shifts
+because every dimension is a power of two. `[12][64][12][64]` needs real
+multiplies, on a table read several times per node by `score_move` and again by
+`update_cont_hist`. The address arithmetic cost more than the cache saved.
+
+The lesson generalises: **a smaller table is not automatically a faster one when
+the index stops being a shift.**
+
+### The `see_ge` early-out measured nothing
+
+Three runs at +1.52%, +0.38% and -0.26% -- the sign changed, so the effect is
+indistinguishable from zero. Note the first number: at 11 pairs it looked like a
+solid win. It was noise, and only the larger samples showed it.
+
+### First-run numbers are not results
+
+Every one of these three looked different at 9-11 pairs than at 25. Anything
+under about 1% needs 25 pairs at depth 15 on an idle box, and below ~0.5% this
+harness cannot resolve it at all.
+
+---
+
 ## 2026-07-29 -- what 612 gauntlet games say about how this engine plays
 
 Analysis of every PGN from the 2+1 gauntlet, both machines. `scripts/style.py`
