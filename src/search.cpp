@@ -359,6 +359,12 @@ bool see_ge(const Position& pos, Move m, int threshold) {
     Color    stm       = pos.side_to_move();
     bool     result    = true;
 
+    // Hoisted: no piece leaves the board during a swap-off, only `occ` changes,
+    // so these two unions are constant for the whole loop.  They were being
+    // rebuilt from two byType_ loads on every x-ray refresh.
+    const Bitboard diagSliders  = pos.pieces(BISHOP, QUEEN);
+    const Bitboard orthoSliders = pos.pieces(ROOK, QUEEN);
+
     while (true) {
         stm = ~stm;
         // Pieces already consumed by the exchange drop out here; so does the
@@ -392,9 +398,9 @@ bool see_ge(const Position& pos, Move m, int threshold) {
 
         // Removing an attacker can expose a slider behind it on the same ray.
         if (pt == PAWN || pt == BISHOP || pt == QUEEN)
-            attackers |= attacks<BISHOP>(to, occ) & pos.pieces(BISHOP, QUEEN);
+            attackers |= attacks<BISHOP>(to, occ) & diagSliders;
         if (pt == ROOK || pt == QUEEN)
-            attackers |= attacks<ROOK>(to, occ) & pos.pieces(ROOK, QUEEN);
+            attackers |= attacks<ROOK>(to, occ) & orthoSliders;
 
         swap = PieceValue[pt] - swap;
         if (swap < int(result))
