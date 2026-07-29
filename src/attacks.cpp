@@ -102,8 +102,12 @@ void build_magics(PieceType pt, Bitboard* table, Magic magics[]) {
                              | ((FileABB | FileHBB) & ~file_bb(s));
 
         m.mask    = sliding_attacks_ref(pt, s, 0) & ~edges;
-        m.shift   = unsigned(64 - popcount(m.mask));
         m.attacks = table + offset;
+#ifndef ROGATIA_PEXT
+        // Only the black-magic indexer has a shift to set; under PEXT the field
+        // does not exist, because carrying it cost 16 bytes per square.
+        m.shift = unsigned(64 - popcount(m.mask));
+#endif
 
         // Carry-rippler enumeration of every subset of the mask.
         int      n = 0;
@@ -119,7 +123,6 @@ void build_magics(PieceType pt, Bitboard* table, Magic magics[]) {
         offset += n;
 
 #ifdef ROGATIA_PEXT
-        m.magic = 0;
         for (int k = 0; k < n; ++k)
             m.attacks[m.index(occs[k])] = refs[k];
 #else

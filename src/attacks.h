@@ -41,11 +41,17 @@ constexpr int BISHOP_TABLE_SIZE = 5248;
 // out identically in both modes (per square, size 2^popcount(mask), no
 // sharing), so the two builds can be perft-diffed against each other with no
 // other change.
+// `magic` and `shift` exist only for the black-magic indexer.  PEXT reads
+// neither, and carrying them there costs 16 bytes per square in the hottest
+// lookup in the engine: 32 bytes means two descriptors per cache line, 16 means
+// four.  Dropping them is invisible to the black-magic build.
 struct Magic {
     Bitboard  mask;     // relevant occupancy squares (edges trimmed)
-    Bitboard  magic;    // unused in the PEXT build
-    Bitboard* attacks;  // -> table slice of size 2^popcount(mask)
+#ifndef ROGATIA_PEXT
+    Bitboard  magic;
     unsigned  shift;    // 64 - popcount(mask)
+#endif
+    Bitboard* attacks;  // -> table slice of size 2^popcount(mask)
 
     unsigned index(Bitboard occ) const {
 #ifdef ROGATIA_PEXT
