@@ -34,14 +34,14 @@
     X(LmrNoisyBase,    205,     0,   1000)      \
     X(LmrNoisyDiv,    3277,  1000,   6000)      \
     X(LmrCutNode,     2048,     0,   4096)      \
-    X(LmrHistDiv,    24576,  2048,  65536)      \
+    X(LmrHistDiv,    40960,  2048,  98304)      \
     X(IirDepth,          4,     2,      8)      \
     X(SingularDepth,     8,     4,     12)      \
     X(SingularMargin,   32,     8,    128)      \
     X(FpDepth,           8,     2,     12)      \
     X(FpMargin,        150,    40,    400)      \
     X(HistPruneDepth,    6,     2,     10)      \
-    X(HistPruneMargin, 2048,   256,   8192)     \
+    X(HistPruneMargin, 3413,   256,  12288)     \
     X(LmpDepth,          8,     4,     12)      \
     X(LmpBase,           3,     1,     10)      \
     X(SeeDepth,          8,     4,     12)      \

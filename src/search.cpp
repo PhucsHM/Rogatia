@@ -113,7 +113,17 @@ struct Stack {
 // (ss-2)->staticEval and continuation history reaches (ss-2) as well, so the
 // plies below the root have to exist as real, zero-initialised entries rather
 // than as whatever precedes the array.
-constexpr int ROOT_OFFSET = 4;
+// Continuation history offsets: how many plies back the "what did we play
+// before this" key reaches.  {1, 2} is the pair every engine has; 4 and 6 add
+// longer-range context.  3 is deliberately absent -- Stormphrax, Stockfish and
+// Alexandria all use {1, 2, 4, 6} and none of them carries 3.
+constexpr int CONT_OFFSETS[] = {1, 2, 4, 6};
+
+// ROOT_OFFSET is 7 and not 4 because the offsets now reach 6.  At 4, `ss - 6`
+// from the root indexes stack[-2] -- off the front of the array, reading
+// whatever the Worker happens to hold there and feeding it to move ordering.
+// Silent, and it would only ever show up as inexplicably bad play.
+constexpr int ROOT_OFFSET = 7;
 
 std::atomic<bool> Stopped{false};
 
@@ -269,7 +279,7 @@ std::int16_t* cont_hist(const Stack* prev, Piece pc, Square to) {
 
 // Bonus (or malus) to both offsets at once -- they are always updated together.
 void update_cont_hist(const Stack* ss, Piece pc, Square to, int bonus) {
-    for (int off : {1, 2})
+    for (int off : CONT_OFFSETS)
         if (std::int16_t* slot = cont_hist(ss - off, pc, to))
             update_history(*slot, bonus);
 }
@@ -414,7 +424,7 @@ int score_move(const Position& pos, Move m, Move ttMove, const Stack* ss) {
         return SCORE_KILLER2;
 
     int score = W.history[pos.side_to_move()][from_sq(m)][to_sq(m)];
-    for (int off : {1, 2})
+    for (int off : CONT_OFFSETS)
         if (const std::int16_t* slot = cont_hist(ss - off, pos.piece_on(from_sq(m)), to_sq(m)))
             score += *slot;
     return score;
@@ -898,7 +908,7 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
                     // node already knows about this move.  ss->movedPiece was
                     // captured before make_move, which has run by now.
                     int hist = W.history[us][from_sq(m)][to_sq(m)];
-                    for (int off : {1, 2})
+                    for (int off : CONT_OFFSETS)
                         if (const std::int16_t* slot = cont_hist(ss - off, ss->movedPiece, to_sq(m)))
                             hist += *slot;
                     r -= hist * LMR_SCALE / tunable::LmrHistDiv;
