@@ -758,6 +758,46 @@ whole RfpMargin.
 
 ---
 
+## 2026-07-29 -- the Phase 8 corpus is filtered
+
+`data/filtered-p8.bin` on the training box, **152,318,042 positions, 4.6 GB**,
+built by `scripts/filter.cpp` (`make filter`) from the 20260728-090808 run:
+
+```
+./filter data/filtered-p8.bin 5000 150 data/20260728-090808/*.bin
+```
+
+| | |
+|---|---|
+| input | 474,648,448 in 16 shards |
+| dropped, label above 5000 | **2** |
+| dropped, duplicate position | 18,004,790 (3.8%) |
+| survived both | 456,769,864 |
+| thinned 1 in 3 | **152,318,042** |
+
+**The tablebase label bug was real and almost never fired.** Two records in
+474 million. Worth knowing why, so nobody re-panics about it: the datagen root
+probe adjudicates as soon as the position reaches five men, and a 5,120-node
+search almost never returns a tablebase score from a root the loop still
+considers ordinary. The engine fix stands, but the corpus never needed rescuing
+from it. The duplicates were the filter that actually mattered.
+
+Sanity check on a 4M sample of the output: max |label| 4,447, no value near the
+30,000 poison signature, results 37/29/34 percent loss/draw/win, and the label
+distribution decays smoothly from zero. That is a healthy corpus.
+
+**Datagen was still running when this was filtered** -- 474M of the 500M target,
+finishing about 15:15. Re-run the same command when it completes to pick up the
+last 25M; it costs about ten minutes and yields roughly 160M. The filter
+tolerates a shard that is still being appended to, so it can be run at any time.
+
+**Thinning is a blunt instrument and the number is a judgement.** The flat file
+has no game boundaries, so 1-in-3 decorrelates consecutive plies without
+respecting game structure. If the next net underfits, keep more; if it overfits
+on near-duplicate positions, keep less.
+
+---
+
 ## Updating this file
 
 Whoever completes a phase updates: the state table, a changelog entry with the
