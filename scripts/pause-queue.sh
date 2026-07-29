@@ -31,7 +31,10 @@ if [ -f config.json ]; then
 	live=$(ls -t "$resume_dir"/*.config.json 2>/dev/null | head -1)
 	if [ -n "$live" ]; then
 		cp -f config.json "$live.tmp" 2>/dev/null
-		if [ "$(tail -c 1 "$live.tmp" 2>/dev/null)" = "}" ]; then
+		# Last NON-WHITESPACE byte. fastchess writes CRLF, so the file ends
+		# `}\r\n` and a bare `tail -c 1` returns the newline -- which command
+		# substitution strips to nothing, failing the test for every file.
+		if [ "$(tail -c 64 "$live.tmp" 2>/dev/null | tr -d '[:space:]' | tail -c 1)" = "}" ]; then
 			mv -f "$live.tmp" "$live"
 			echo "snapshot updated: $live"
 		else

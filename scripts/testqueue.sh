@@ -232,12 +232,20 @@ for entry in "${QUEUE[@]}"; do
     # is the exact failure that cost a whole syzygy run on 2026-07-28.
     #
     # Copy to a temp, check it, and only then promote.  The check is the last
-    # byte being `}`: no dependency on python or jq, and a truncated write
-    # essentially never ends that way.
+    # NON-WHITESPACE byte being `}`: no dependency on python or jq, and a
+    # truncated write essentially never ends that way.
+    #
+    # The whitespace strip is load-bearing.  fastchess writes config.json with
+    # CRLF line endings, so the file ends `}\r\n` -- and `$(tail -c 1 ...)`
+    # returns the newline, which command substitution then strips to the empty
+    # string.  Comparing that against `}` fails for EVERY file, valid or not, so
+    # the first version of this guard silently rejected every snapshot and
+    # turned the resume mechanism off completely.  It looked like it was
+    # working: the snapshot file was still there, just never updated.
     snapshot() {
         [ -f config.json ] || return 0
         cp -f config.json "$resume.tmp" 2>/dev/null || return 0
-        if [ "$(tail -c 1 "$resume.tmp" 2>/dev/null)" = "}" ]; then
+        if [ "$(tail -c 64 "$resume.tmp" 2>/dev/null | tr -d '[:space:]' | tail -c 1)" = "}" ]; then
             mv -f "$resume.tmp" "$resume" 2>/dev/null
         else
             rm -f "$resume.tmp" 2>/dev/null
