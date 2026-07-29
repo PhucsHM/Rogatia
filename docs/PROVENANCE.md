@@ -134,10 +134,10 @@ than an argument.
 
 ## Other engines
 
-**Policy since 2026-07-30: other engines' source is no longer be read.** Several authors
+**Policy from 2026-07-30: other engines' source is no longer read.** Several authors
 have asked that their repositories not be used as material for an AI-assisted
-project, and some now carry an explicit notice. (Ciekce asked directly that
-Stormphrax not be used) that request is honoured, and it is applied generally
+project, and some now carry an explicit notice. One such request was made
+directly about Stormphrax; it is honoured, and the policy is applied generally
 rather than only where asked.
 
 What is used instead: the Chess Programming Wiki, published papers, and engine
