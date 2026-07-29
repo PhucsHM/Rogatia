@@ -64,7 +64,15 @@ if command -v taskkill >/dev/null 2>&1; then
 else
 	pkill -x fastchess 2>/dev/null
 	sleep 2
-	pkill -f '[r]ogatia-' 2>/dev/null
+	# Match the PROCESS NAME, never the command line.  `pkill -f '[r]ogatia-'`
+	# looks safe because the bracket stops it matching itself, but it still
+	# matches any OTHER shell whose command line happens to contain the string --
+	# including an ssh session that names a rogatia binary. That killed the
+	# caller mid-script on 2026-07-30 and the work it was about to do never ran,
+	# silently. `comm` is the executable name and cannot collide that way.
+	for p in $(ps -eo pid=,comm= | awk '$2 ~ /^rogatia-/ {print $1}'); do
+		kill -9 "$p" 2>/dev/null
+	done
 fi
 
 sleep 2

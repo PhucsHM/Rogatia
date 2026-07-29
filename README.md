@@ -22,6 +22,10 @@ faced any.
 
 The six implied values span 103 points. They agree on a band, not on a number.
 
+**Blitz-tested only.** Every SPRT and every gauntlet so far has run at 8+0.08 or
+2'+1. The engine has never been measured at a long time control, so behaviour
+there is genuinely unknown rather than merely untuned.
+
 ## What is in it
 
 **Search** — fail-soft PVS, iterative deepening, aspiration windows, quiescence
@@ -60,8 +64,19 @@ The build honours `EXE=`, `CXX=` and `EVALFILE=` for
 [OpenBench](https://github.com/AndyGrant/OpenBench) compatibility.
 
 **The network is not in the repository.** `nets/` is gitignored, so a fresh
-clone builds the PSQT fallback, which is roughly 360 Elo weaker. Build with
-`make EVALFILE=/abs/path/to/net.nnue`.
+clone builds the PSQT fallback, which is roughly 360 Elo weaker — that build
+benches `6951633` instead of `4656884`.
+
+Download `rogatia-p8a.nnue` from the
+[latest release](https://github.com/PhucsHM/Rogatia/releases) and build against
+it:
+
+```bash
+make EVALFILE=/abs/path/to/rogatia-p8a.nnue
+```
+
+If you only want to play or test the engine, take the prebuilt binary from that
+same release rather than building.
 
 ## Usage
 
