@@ -107,6 +107,14 @@ struct Stack {
     // The NNUE accumulator for the position at this ply, carried down the tree
     // incrementally rather than rebuilt.  Unused when no network is loaded.
     nnue::Accumulator acc{};
+
+    // Which accumulator is in force at this ply.  Normally &acc, but a null
+    // move changes no feature, so its child points back at the PARENT's rather
+    // than copying 1 KB to produce a byte-identical object.
+    //
+    // Only ever read through.  apply_move always writes the child's own `acc`
+    // and then repoints, so a shared parent buffer is never written.
+    const nnue::Accumulator* accPtr = nullptr;
 };
 
 // The root sits at stack[ROOT_OFFSET], not stack[0]: "improving" reads
@@ -163,7 +171,7 @@ Worker W;
 // Evaluation goes through the accumulator this ply already carries; without a
 // network it falls back to the piece-square tables.
 Score eval_at(const Position& pos, const Stack* ss) {
-    return nnue::loaded() ? nnue::evaluate(pos, ss->acc) : evaluate(pos);
+    return nnue::loaded() ? nnue::evaluate(pos, *ss->accPtr) : evaluate(pos);
 }
 
 // ---------------------------------------------------------------- syzygy ---
@@ -561,7 +569,10 @@ Score qsearch(Position& pos, Stack* ss, Score alpha, Score beta) {
         }
 
         if (nnue::loaded())
-            nnue::apply_move(pos, m, ss->acc, (ss + 1)->acc);
+            nnue::apply_move(pos, m, *ss->accPtr, (ss + 1)->acc);
+        // A real move writes the child's OWN accumulator, so repoint it: a null
+        // move deeper in the line must not inherit a stale parent pointer.
+        (ss + 1)->accPtr = &(ss + 1)->acc;
         pos.make_move(m);
         TT.prefetch(pos.key());
         const Score score = -qsearch<PvNode>(pos, ss + 1, -beta, -alpha);
@@ -730,8 +741,9 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
 
         ss->currentMove = MOVE_NULL;
         ss->movedPiece  = NO_PIECE;
-        if (nnue::loaded())
-            (ss + 1)->acc = ss->acc;
+        // A null move changes no feature, so the child's accumulator would be
+        // byte-identical to ours.  Point at ours instead of copying 1 KB.
+        (ss + 1)->accPtr = ss->accPtr;
         pos.make_null_move();
         const Score score =
             -search<false>(pos, ss + 1, -beta, -beta + 1, depth - R, !cutNode);
@@ -862,7 +874,10 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
         ss->movedPiece  = pos.piece_on(from_sq(m));
         ss->movedTo     = to_sq(m);
         if (nnue::loaded())
-            nnue::apply_move(pos, m, ss->acc, (ss + 1)->acc);
+            nnue::apply_move(pos, m, *ss->accPtr, (ss + 1)->acc);
+        // A real move writes the child's OWN accumulator, so repoint it: a null
+        // move deeper in the line must not inherit a stale parent pointer.
+        (ss + 1)->accPtr = &(ss + 1)->acc;
         pos.make_move(m);
         TT.prefetch(pos.key());
 
@@ -1114,6 +1129,7 @@ void iterative_deepening(Position& pos, int maxDepth) {
     // tree is derived from this one.
     if (nnue::loaded())
         nnue::refresh(pos, root->acc);
+    root->accPtr = &root->acc;
 
     Score previous = VALUE_NONE;
 
@@ -1275,6 +1291,7 @@ Score qsearch_eval(Position& pos) {
 
     if (nnue::loaded())
         nnue::refresh(pos, W.stack[ROOT_OFFSET].acc);
+    W.stack[ROOT_OFFSET].accPtr = &W.stack[ROOT_OFFSET].acc;
 
     return qsearch<false>(pos, W.stack + ROOT_OFFSET, -VALUE_INFINITE, VALUE_INFINITE);
 }
