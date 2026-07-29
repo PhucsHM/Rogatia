@@ -22,7 +22,7 @@ are sitting.
 | Current net | `nets/rogatia-p6.nnue`, `(768→256)x2→1`, 112M positions |
 | SPRT baseline | **current `main`** — `rogatia-base.exe` benches 4,772,409, which is `main`'s with-net count. Every queued test measures its own patch, not the accumulated phase. The tag `base-phase6` is the *phase* baseline, used only for the end-of-phase gate. **Do not rebuild `rogatia-base` while the queue is draining.** |
 | Work split | **See "Active work split — set 2026-07-28" below.** Training box regenerates the corpus and retrains; laptop does Phase 7 search. |
-| Laptop | Armed — net fetched, checksum verified, all four gates pass |
+| Laptop | **Draining the Phase 7 search queue.** Net fetched, checksum verified, all four gates pass. Bounds are per test — see "bounds tightened" below |
 
 Tags: `base-phase3` (bench 54095910, depth 8), `base-phase4` (5356740),
 `base-phase6` (4063328). **Bench depth changed 8 → 12 at commit `655f93c`** —

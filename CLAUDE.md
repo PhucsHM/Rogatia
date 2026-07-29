@@ -259,6 +259,12 @@ fastchess \
 - **`-concurrency 8`, not 16.** SMT siblings distort timing at 8+0.08 and cause spurious losses on time. Use physical cores only.
 - **Time control 8+0.08** for the SPRT. Verify passing patches at 20+0.2. Do not chase LTC-only patches — this engine is for blitz, so short-TC tuning bias is *aligned* with the goal.
 - **Bounds by strength:** `[0.00, 10.00]` while under ~2800, `[0.00, 5.00]` mid, `[0.00, 3.00]` above ~3300. Non-regressions `[-10.00, 0.00]`. Always alpha=beta=0.05.
+- **In Phase 7 the bounds are per test, not per phase.** A first test of a new
+  technique uses `[0.00, 5.00]` with a 4,000-game stall limit. A **retune** of a
+  patch that already failed uses `[0.00, 3.00]` with a 12,000-game limit,
+  because a retune's honest expectation is a few Elo and that is exactly what
+  `[0, 5]` coin-flips. `scripts/testqueue.sh` derives the stall limit from
+  `elo1`; the two cannot be set apart. See `docs/TESTING.md`.
 - **Books:** `8moves_v3.epd` while weak; switch to `UHO_Lichess_4852_v1.epd` above ~2800. Both from OpenBench's `Books/`, fetched by `scripts/setup-testing.sh`.
 - Pentanomial (game-pair) statistics — fastchess does this by default and it converges meaningfully faster than trinomial.
 
