@@ -69,8 +69,16 @@ bench 4712710
 
 **Phases 1–6 complete. Phase 7 (full search build-out) is in progress.** See `docs/ROADMAP.md` for the full arc.
 
-Merged in Phase 7 so far: **singular extensions** (+39.04 +/- 12.69, 1,296 games) and
-**correction history** on the pawn and non-pawn keys (+33.13 +/- 11.60, 1,504 games).
+Merged in Phase 7 so far: **singular extensions** (+39.04 +/- 12.69, 1,296 games),
+**correction history** on the pawn and non-pawn keys (+33.13 +/- 11.60, 1,504 games),
+**time management** (+28.34 +/- 10.32, 1,708 games) and **Syzygy probing**
+(+24.07 +/- 9.41).
+
+**Every SPRT before 2026-07-29 ran without tablebases.** No script passed
+`SyzygyPath`, and the engine defaults it to `<empty>`, so Syzygy was inert in
+every game after it merged. Numbers either side of that date are not directly
+comparable: the earlier ones measured an engine about 24 Elo below its own
+merged strength.
 
 **The Phase 7 work is now aimed by measurement rather than by the roadmap's
 feature list.** Replaying the 720-game Zahak gauntlet through `scripts/style.py`

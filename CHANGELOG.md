@@ -14,7 +14,7 @@ are sitting.
 
 | | |
 |---|---|
-| Phases complete | 1–6. **Phase 7 in progress.** Merged: singular extensions (+39.04 +/- 12.69), correction history (+33.13 +/- 11.60), Syzygy probing (+24.07 +/- 9.41), the PV stale-tail fix (bench-neutral). Parked: repetition (~+2, stalled), rule50 (**-15.03, rejected**). See "Phase 7 conversion work" below. |
+| Phases complete | 1–6. **Phase 7 in progress.** Merged: singular extensions (+39.04 +/- 12.69), correction history (+33.13 +/- 11.60), **time management (+28.34 +/- 10.32)**, Syzygy probing (+24.07 +/- 9.41), the PV stale-tail fix (bench-neutral). Parked: repetition (~+2, stalled), rule50 taper (**-15.03, rejected**; its TT guard split off and queued separately). See "Phase 7 conversion work" below. |
 | Target | **3500+ CCRL Blitz** (raised from 3200 on 2026-07-28). Blitz-only: measured on CCRL Blitz, tuned at the time control it plays, never verified at a slower one. |
 | Strength | **3379 +/- 20 CCRL Blitz**, 2026-07-29, six anchors across four families at `tc=120+1`. Supersedes ~3175, which was measured at 8+0.08 against the p6 net. See "The 2+1 measurement" below — **three caveats, and the third is that no anchor sits above the engine.** |
 | Bench, with a net | **4,656,884** (4,063,328 at `base-phase6`) |
@@ -83,6 +83,45 @@ published anywhere.
   hold the wait and the detach, which are the only parts that cannot go on a
   command line safely. There is no per-time-control script: `lib.sh` already
   reads `TC` from the environment.
+
+---
+
+## 2026-07-29 -- time management merged, +28.34 +/- 10.32
+
+`phase7-timeman3`, SPRT accepted H1 on `[0.00, 5.00]`:
+
+```
+1708 games, 545-406-757, 54.07%
+Elo +28.34 +/- 10.32, nElo +45.47 +/- 16.48
+```
+
+The largest single Phase 7 result so far, and it resolved in **80 minutes**
+against the 17-hour ceiling the stall limit allows.
+
+Two scalers multiply the soft limit:
+
+- **Node fraction.** If the best move already consumed most of the search tree,
+  the position is easy -- move sooner.
+- **Best-move stability.** The longer the root move has survived across
+  iterations, the less the next iteration is worth.
+
+**This is the first SPRT this project has ever run with tablebases enabled**, so
+it is not directly comparable with the earlier Phase 7 numbers. Those all
+measured an engine roughly 24 Elo below its own merged strength, because no
+script passed `SyzygyPath` until the same day.
+
+### Bench cannot gate it
+
+The scalers sit behind `W.useTime`, which `bench` leaves false because bench is
+depth-limited. The count does not move and that proves nothing either way, so
+the merge was gated on the wiring surviving instead -- `scaled_soft_limit`
+called from the soft-limit check rather than merely defined, `bestMoveStability`
+reset and updated at the root, `rootNodes` accumulated in the move loop -- plus
+a live timed search, which moved in 498 ms of a 10-second budget.
+
+That check is not ceremony. `phase7-dblext2` was queued with a feature that was
+defined, wired, and inert across null moves, and it would have returned a
+perfectly believable number for something that was not running.
 
 ---
 
