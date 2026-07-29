@@ -913,9 +913,26 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
             score = -search<false>(pos, ss + 1, -alpha - 1, -alpha, newDepth, !cutNode);
 
             // Reduced and still beat alpha: the reduction was wrong, so redo it
-            // at full depth before believing the score.
-            if (score > alpha && newDepth < fullDepth)
-                score = -search<false>(pos, ss + 1, -alpha - 1, -alpha, fullDepth, !cutNode);
+            // before believing the score.  How MUCH deeper to redo it is worth
+            // deciding rather than assuming: the reduced search already told us
+            // how badly the reduction misjudged the move.
+            //
+            // Beat the node's running best by a wide margin and the move is
+            // probably better than the re-search would show at plain full
+            // depth, so give it one more ply.  Beat it by a hair and the
+            // fail-high is likely noise, so take one away.  Everything else
+            // re-searches at full depth exactly as before.
+            if (score > alpha && newDepth < fullDepth) {
+                int reDepth = fullDepth;
+                if (tunable::LmrDepthAdj) {
+                    const bool doDeeper =
+                        score > best + tunable::LmrDeeperBase + tunable::LmrDeeperScale * fullDepth;
+                    const bool doShallower = score < best + tunable::LmrShallowerMargin;
+                    reDepth += int(doDeeper) - int(doShallower);
+                    reDepth = std::clamp(reDepth, newDepth + 1, fullDepth + 1);
+                }
+                score = -search<false>(pos, ss + 1, -alpha - 1, -alpha, reDepth, !cutNode);
+            }
 
             if (PvNode && score > alpha && score < beta)
                 score = -search<true>(pos, ss + 1, -beta, -alpha, fullDepth, false);
