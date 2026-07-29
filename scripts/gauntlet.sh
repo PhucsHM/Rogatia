@@ -20,9 +20,14 @@ ENGINE=$(bin "${2:-$ROOT/rogatia-base}")
 # makes the next number incomparable with the last one.
 BOOK=${BOOK:-$BOOK_BALANCED}
 
-# name : CCRL Blitz (40/4) rating : that rating's own error bar.
+# name : CCRL Blitz rating : that rating's own error bar.
 # 1-CPU 64-bit entries, list read 2026-07-28 from
 # https://computerchess.org.uk/404/rating_list_all.html
+#
+# CCRL Blitz states its own time control as "equivalent to 2'+1" on an Intel
+# i7-4770K", so TC=120+1 is the control to measure a Blitz number at.  An
+# earlier comment here said 40/4; that is the list's old control and it is
+# wrong.  Fetch the page with a browser User-Agent -- the plain one gets 403.
 #
 # Replaced at Phase 6. The original set (toad 1776, goldfish 2252, blunder
 # 2664) is saturated: the engine scored 99.4%, 96.0% and 95.4% against them,
@@ -50,6 +55,15 @@ ANCHORS=${ANCHORS:-"zahak-8.0:3160:16 zahak-9.0:3292:12 zahak-10.0:3334:8 stormp
 # is Linux-native. Alexandria, Clover, Smallbrain and Obsidian publish Windows
 # binaries only, so the laptop runs those -- no Wine needed, it is a Windows
 # box. Between the two machines that is seven families instead of three.
+#
+# THE LAPTOP SET IS RECORDED HERE, not left in a shell variable.  On 2026-07-29
+# it was passed as an env var on the command line, the laptop was moved, the
+# shell died with it, and three finished matches were left with scores that
+# converted to nothing until the ratings were fetched again.  Ratings read
+# 2026-07-29 from the list computed 2026-07-25.
+#
+#   ANCHORS="$ANCHORS_WINDOWS" scripts/gauntlet.sh 100 ./rogatia-p8a
+ANCHORS_WINDOWS="alexandria-3.5:3405:13 clover-3.1:3399:11 smallbrain-6.0:3361:15"
 
 OUT=$ROOT/sprt-results/gauntlet-$(date +%Y%m%d-%H%M%S)
 mkdir -p "$OUT"
