@@ -45,7 +45,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
 #include <cstring>
+#include <string>
 #include <vector>
 
 namespace {
@@ -203,6 +205,15 @@ int main(int argc, char** argv) {
                         }
                     }
                 }
+                // A short read that is not a whole number of records means EOF
+                // mid-record.  STOP -- do not loop.  fread has consumed those
+                // bytes, so another read would start mid-record and every
+                // subsequent record from this shard would decode out of phase:
+                // garbage key, garbage label, garbage 32 bytes copied out.
+                // Reachable whenever a shard is still being appended to, which
+                // this tool explicitly supports.
+                if (n % REC)
+                    break;
             }
             std::fclose(f);
         }
