@@ -20,7 +20,16 @@ namespace rogatia::nnue {
 
 namespace {
 
-struct Network {
+// alignas(64), because nothing else requires it.  The natural alignment is
+// alignof(int16_t) = 2; linkers usually give a large .bss object 16 or 32 bytes
+// as a side effect, but that can change with the compiler, with LTO, or with a
+// -march level.  Every feature column is 512 bytes apart, so they all share the
+// base's alignment residue -- if the base is under-aligned, EVERY weight load
+// in the accumulator update is unaligned.
+//
+// The offsets work out so one attribute covers all three arrays: l0w is
+// 768*256*2 = 393,216 = 6144*64, l0b is 512, so l1w starts at 6152*64.
+struct alignas(64) Network {
     // Column-major HIDDEN x INPUTS: a feature's HIDDEN weights are contiguous,
     // which is the whole reason an accumulator update is cheap.
     std::int16_t l0w[INPUTS * HIDDEN];
@@ -177,18 +186,20 @@ Score evaluate(const Position& pos, const Accumulator& acc) {
 
     // The side to move always occupies the first half of the output weights.
     //
-    // The accumulator is 64-bit, not 32-bit.  One term reaches QA*QA * 32767 =
-    // 2,130,874,175, which barely fits an int32, and 512 of them do not.
-    // Signed overflow is undefined behaviour, and undefined behaviour is the
-    // only way -march divergence can enter this file: the compiler may
-    // reassociate a vectorised sum under a no-overflow assumption, and bench
-    // then differs between -march levels.  That breaks OpenBench eligibility.
-    // Nothing at load time bounds l1w, so int32 here is trust, not a check.
+    // Multiply in int32, widen only the ADDEND.  The product provably fits:
+    // screlu maxes at QA*QA = 65,025 and a weight at 32,767, so the worst term
+    // is 2,130,674,175 < 2^31.  Only the SUM of 512 of them can overflow, so
+    // that is the only place the 64-bit type is needed.
+    //
+    // Widening before the multiply -- which is what this used to do -- makes it
+    // a 64-bit multiply per term, 512 per call, and forces any vectorisation
+    // down to four int64 lanes per vector with a pile of unpacking.  Same
+    // safety, much slower, for nothing.
     std::int64_t out = 0;
     for (int i = 0; i < HIDDEN; ++i)
-        out += std::int64_t(screlu(acc.v[us][i])) * int(Net.l1w[i]);
+        out += std::int64_t(screlu(acc.v[us][i]) * int(Net.l1w[i]));
     for (int i = 0; i < HIDDEN; ++i)
-        out += std::int64_t(screlu(acc.v[them][i])) * int(Net.l1w[HIDDEN + i]);
+        out += std::int64_t(screlu(acc.v[them][i]) * int(Net.l1w[HIDDEN + i]));
 
     // screlu squared the QA-quantised activations, so the running total is at
     // QA*QA*QB.  One division brings it back to QA*QB, which is the scale the
