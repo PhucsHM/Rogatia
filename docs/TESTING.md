@@ -40,11 +40,36 @@ During a breadth pass like Phase 7 the per-patch baseline moves often, so
 before the next test. `rogatia-base` benches **4,772,409** today, which is
 `main`'s with-net count.
 
-**Rebuild between queue drains, never during one.** Every entry in
-`scripts/testqueue.sh` names `rogatia-base` as a *file*, and the queue runs the
-same file for hours. Replacing it mid-drain measures the early tests against one
-baseline and the later ones against another, and no log records which. Wait for
-`queue drained`, then rebuild.
+**Rebuild between queue drains, never during one — and a paused drain still
+counts as during one.** Every entry in `scripts/testqueue.sh` names
+`rogatia-base` as a *file*, and the queue runs the same file for hours.
+Replacing it mid-drain measures the early tests against one baseline and the
+later ones against another, and no log records which.
+
+A stopped queue looks like a safe moment to rebuild and is not. A test parked
+with a resume config has already played its games against the **current**
+`rogatia-base.exe`; swapping the file before it resumes splits that one test
+across two baselines. Wait for `queue drained` in the summary log, then rebuild.
+
+**Consistency across a drain beats being exactly at `main`.** If the baseline
+has drifted behind `main`, prefer leaving it alone until the drain ends, so
+every test in that drain shares one baseline. Check what the drift actually is
+before deciding -- a baseline missing only bench-neutral or dormant commits
+costs nothing, while one missing a real search change invalidates the drain.
+
+**How to see the drift without guessing.** The UCI option list is the cheapest
+fingerprint, because a new feature usually adds an option:
+
+```bash
+printf 'uci\nquit\n' | ./rogatia-base.exe | grep 'option name' | awk '{print $3}' | sort > /tmp/base.txt
+printf 'uci\nquit\n' | ./rogatia-dev.exe  | grep 'option name' | awk '{print $3}' | sort > /tmp/dev.txt
+comm -13 /tmp/base.txt /tmp/dev.txt        # what dev adds over base
+```
+
+Measured 2026-07-29: every queued dev binary added exactly `SyzygyPath` over
+`rogatia-base`, which dated the baseline to before the Syzygy merge. Syzygy is
+dormant without `SyzygyPath` set and the PV fix is reporting-only, so the drain
+was left to run on that baseline rather than split across two.
 
 Testing a patch against a stale phase tag silently measures the phase instead of
 the patch, and the number reads as a large clean win. That is the mistake this
