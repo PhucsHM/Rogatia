@@ -5,19 +5,14 @@ at the time control it plays.
 
 ## What moves the number
 
-| | What it is | Where the Elo comes from |
-|---|---|---|
-| **Search work** | Writing C++ — pruning, reductions, extensions, move ordering | The bulk of it, in many small steps |
-| **Network training** | Compute — self-play data, GPU training | Large single jumps, then compounding |
+Search work and network training contribute differently. Search is many small
+steps and is the slow part; training is a few large jumps and is bounded by data
+generation rather than by GPU time. Data generation runs at thousands of
+positions per second in the background, so the two overlap.
 
-Search is the slow part; training is the fast part. Data generation runs at
-thousands of positions per second, so the two overlap: the CPU generates data in
-the background while search development continues.
-
-**The network learns to imitate the search.** It is trained on the search's own
-evaluations, not on game outcomes — supervised learning, not reinforcement
-learning. A weak search teaches a weak net and no amount of self-play
-compensates. That is why search quality gates everything.
+The network is trained on the search's own evaluations rather than on game
+outcomes — supervised learning, not reinforcement learning. A weak search
+therefore teaches a weak network, which is why search quality gates everything.
 
 ## Locked decisions
 
@@ -85,10 +80,8 @@ builds.
 fastchess SPRT with pentanomial statistics, OpenBench books,
 `scripts/setup-testing.sh` to reproduce the harness on a fresh machine.
 
-This deliberately comes *before* the features it validates. Published Elo figures
-are order- and engine-dependent; only your own SPRT numbers mean anything.
-Skipping it is how engine projects die — with a stack of patches that each
-obviously helped and collectively lost Elo.
+Built before the features it validates. Published Elo figures are order- and
+engine-dependent, so only the project's own SPRT numbers are usable.
 
 **Gate: harness self-test** on identical binaries reports no difference.
 
@@ -96,7 +89,6 @@ obviously helped and collectively lost Elo.
 Null move, LMR, reverse futility, late move pruning, SEE pruning, continuation
 history. One commit each, on a bench-identical groundwork commit.
 
-Notes worth keeping:
 - LMR's `ln` table is **hardcoded integers, not `std::log`**, because bench has
   to be identical across libm implementations.
 - Reverse futility uses a *linear* margin, which is what the literature converged
@@ -161,9 +153,8 @@ Stall limits live in `scripts/testqueue.sh` and are derived from the bounds:
 20,000 games at `[0, 5]`, 30,000 at `[0, 3]`. Past that with the LLR still inside
 ±0.6, the effect is too small to resolve and that answer is already in hand.
 
-It is deliberately **not** an early abort on a losing result — SPRT rejects a real
-loss quickly by itself, and second-guessing it throws away verdicts that were
-about to arrive.
+A losing result is not aborted early: SPRT rejects a real loss quickly on its
+own, and stopping sooner discards verdicts that were about to arrive.
 
 **Never delete a `phase7-*` branch.** A parked branch is a saved starting point.
 
@@ -203,10 +194,10 @@ stated target. It does not speed up testing either: an SPRT runs
 `option.Threads=1` at concurrency 8, and making the engine multithreaded changes
 none of that.
 
-It is still worth building for tournaments, the 4CPU lists and ordinary use — but
-build it deliberately, not as the tail of an overnight batch. A threading bug is
-the one class of defect none of this project's gates can catch: perft is
-single-threaded, bench is single-threaded, and an SPRT runs `Threads=1`.
+It remains worth building for tournaments, the 4CPU lists and ordinary use. A
+threading bug is the one class of defect none of this project's gates can catch:
+perft is single-threaded, bench is single-threaded, and an SPRT runs
+`Threads=1`.
 
 Design, when it happens — **lazy SMP**: N threads search the root independently
 and share the transposition table, diverging naturally through timing.
@@ -251,6 +242,6 @@ measured an engine roughly 24 Elo below its own merged strength.
   seeds from day one, `-march` bench equality checked from Phase 6.
 - **Testing throughput above ~3300.** Patches worth a few Elo need 50k–150k games
   each. Arrange OpenBench access before hitting the wall.
-- **Gates that cannot fail.** Two were found in one day: a perft runner that
-  segfaulted before printing anything on one machine, and a tablebase option no
-  script ever passed. A gate that cannot run reads as a passing one.
+- **Gates that cannot fail.** A gate that cannot run is indistinguishable from
+  a passing one. Two such cases have occurred: a perft runner that crashed before
+  printing anything, and a tablebase option no script passed.
