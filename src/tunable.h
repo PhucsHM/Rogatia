@@ -36,6 +36,8 @@
     X(LmrCutNode,     2048,     0,   4096)      \
     X(LmrHistDiv,    24576,  2048,  65536)      \
     X(IirDepth,          4,     2,      8)      \
+    X(Rule50Div,       199,     0,    400)      \
+    X(Rule50TtCap,      96,    40,    101)      \
     X(SingularDepth,     8,     4,     12)      \
     X(SingularMargin,   32,     8,    128)      \
     X(FpDepth,           8,     2,     12)      \

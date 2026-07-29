@@ -288,11 +288,23 @@ Score correction(const Position& pos) {
 
 // Clamped clear of the mate range: every pruning decision above treats a mate
 // score as proven, and a correction is a guess.
+//
+// The fifty-move damping is the published Stockfish form: no threshold, a
+// straight linear slide from counter 0.  An earlier attempt used a threshold of
+// 20 and measured -15.03 +/- 7.97, and the branch blamed the taper for firing
+// during ordinary play -- but the arithmetic refutes that.  At every counter
+// value the threshold-20 version damped LESS than Stockfish does, and Stockfish
+// gains from damping harder everywhere.  The cause was elsewhere, and the fix
+// for it is the rule50 guard on the transposition-table cutoff below.
 Score corrected_eval(Score raw, const Position& pos) {
     if (raw == VALUE_NONE)
         return VALUE_NONE;
-    return std::clamp(Score(raw + correction(pos)), Score(-VALUE_MATE_IN_MAX_PLY + 1),
-                      Score(VALUE_MATE_IN_MAX_PLY - 1));
+    Score v = Score(raw + correction(pos));
+    // Rule50Div == 0 turns the damping off, so the whole feature has an inert
+    // setting and bench can be proved to return to base.
+    if (tunable::Rule50Div > 0)
+        v = Score(v - v * pos.rule50_count() / tunable::Rule50Div);
+    return std::clamp(v, Score(-VALUE_MATE_IN_MAX_PLY + 1), Score(VALUE_MATE_IN_MAX_PLY - 1));
 }
 
 void update_corr(int& slot, int diff, int depth) {
@@ -633,7 +645,13 @@ Score search(Position& pos, Stack* ss, Score alpha, Score beta, int depth, bool 
     TTData tt;
     const bool ttHit = TT.probe(pos.key(), ss->ply, tt);
 
+    // No table cutoff at a high fifty-move counter.  The Zobrist key does not
+    // hash the counter, so one entry serves the same position at counter 3 and
+    // at counter 93 -- and near the draw those are not the same position at all.
+    // This is the guard the engine was missing, and the reason the fifty-move
+    // taper measured negative without it.
     if (!PvNode && !excluded && ttHit && tt.depth >= depth
+        && pos.rule50_count() < tunable::Rule50TtCap
         && (tt.bound == BOUND_EXACT || (tt.bound == BOUND_LOWER && tt.score >= beta)
             || (tt.bound == BOUND_UPPER && tt.score <= alpha)))
         return tt.score;
