@@ -7,7 +7,7 @@
 //
 //   filter <out.bin> <max-score> <target-millions> <in.bin> [in.bin ...]
 //
-// THREE FILTERS, in this order.
+// THREE FILTERS then a SHUFFLE, in this order.
 //
 // 1. Score outliers.  Until 2026-07-29 the datagen loop ended a game on
 //    is_mate_score(), which is deliberately FALSE for tablebase scores -- so a
@@ -23,15 +23,25 @@
 //    whatever they were labelled.  A 64-bit hash in an open-addressed table;
 //    at 473M positions that is an 8 GB table, which the training box has.
 //
-// 3. Thinning.  Consecutive plies of one game are nearly the same position, so
-//    a corpus of every ply carries far less information than its size suggests.
-//    Keeping every Nth survivor spaces them out.  This is a blunt instrument --
-//    the flat file has no game boundaries to respect -- but it decorrelates,
-//    and it is what turns 473M correlated positions into ~150M useful ones.
+// 3. Thinning, OPTIONAL.  Pass a target to cap the output; pass 0 to keep
+//    everything.  Prefer 0 now that the shuffle exists -- see below.
+//
+// Then: SHUFFLE, always.  bullet's DirectSequentialDataLoader reads this file
+// in order and does not shuffle, so neighbouring plies of one game land in the
+// same 16,384-position batch and contribute near-identical gradients.  That is
+// forty samples' cost for one sample's worth of information.
+//
+// Shuffling is strictly better than thinning at the same job.  Thinning
+// decorrelates by discarding most of the corpus; the shuffle decorrelates and
+// keeps all of it.  Measured on a 3M synthetic corpus whose neighbours differ
+// by construction: 19,999 adjacent pairs before, 0 after.  Thinning existed
+// because the shuffle did not, and it cost 65% of the first Phase 8 corpus.
 //
 // Two passes over the input: the first counts survivors so the stride is exact,
 // the second writes.  The dedupe table is rebuilt identically in pass two, so
-// both passes see the same survivors in the same order.
+// both passes see the same survivors in the same order.  The shuffle is a third
+// pass, in memory, after the dedupe table is freed so the two large allocations
+// never coexist.
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -136,7 +146,7 @@ int main(int argc, char** argv) {
     std::vector<unsigned char> buf(REC * 65536);
 
     // ---- pass 1: count what survives the score filter and the dedupe ----
-    std::uint64_t dropScore = 0, dropDup = 0, survivors = 0;
+    std::uint64_t dropScore = 0, dropDup = 0, survivors = 0, written = 0;
     for (int pass = 1; pass <= 2; ++pass) {
         if (pass == 2) {
             seen.reset();
@@ -209,7 +219,67 @@ int main(int argc, char** argv) {
             std::fclose(out);
             std::fprintf(stderr, "written    %llu positions to %s\n",
                          (unsigned long long) kept, outPath);
+            written = kept;
         }
     }
+
+    // ---- shuffle ----
+    //
+    // bullet's DirectSequentialDataLoader reads this file IN ORDER and does not
+    // shuffle -- the only shuffle buffer in the tree is in montybinpack.rs, a
+    // format we do not use.  So with a batch of 16,384 read sequentially,
+    // neighbouring plies of one game land in the SAME batch and contribute
+    // near-identical gradients: forty samples' cost for one sample's worth of
+    // information.
+    //
+    // Shuffling here fixes that at the source, and it is strictly better than
+    // thinning.  Thinning decorrelates by throwing most of the corpus away;
+    // this decorrelates and keeps all of it.  Pass target 0 to get that.
+    //
+    // Free the dedupe table first so the two large allocations never coexist.
+    std::vector<std::uint64_t>().swap(seen.slot);
+
+    const std::size_t bytes = std::size_t(written) * REC;
+    std::vector<unsigned char> all;
+    try {
+        all.resize(bytes);
+    } catch (...) {
+        std::fprintf(stderr,
+                     "shuffle    SKIPPED: %.1f GB will not fit in memory.  The file is written\n"
+                     "           and correct, just unshuffled -- rerun with a smaller target.\n",
+                     double(bytes) / 1e9);
+        return 0;
+    }
+
+    std::FILE* g = std::fopen(outPath, "rb");
+    if (!g || std::fread(all.data(), 1, bytes, g) != bytes) {
+        std::fprintf(stderr, "shuffle    cannot re-read %s\n", outPath);
+        if (g) std::fclose(g);
+        return 1;
+    }
+    std::fclose(g);
+
+    // Fisher-Yates with a FIXED seed: the same input must always produce the
+    // same output, for the same reason the Zobrist seeds are fixed.
+    std::uint64_t st = 0;
+    unsigned char tmp[REC];
+    for (std::uint64_t i = written; i > 1; --i) {
+        const std::uint64_t j = mix(st += 0x9E3779B97F4A7C15ULL) % i;
+        unsigned char* a = all.data() + (i - 1) * REC;
+        unsigned char* b = all.data() + j * REC;
+        std::memcpy(tmp, a, REC);
+        std::memcpy(a, b, REC);
+        std::memcpy(b, tmp, REC);
+    }
+
+    g = std::fopen(outPath, "wb");
+    if (!g || std::fwrite(all.data(), 1, bytes, g) != bytes) {
+        std::fprintf(stderr, "shuffle    cannot rewrite %s\n", outPath);
+        if (g) std::fclose(g);
+        return 1;
+    }
+    std::fclose(g);
+    std::fprintf(stderr, "shuffled   %llu positions, %.1f GB, fixed seed\n",
+                 (unsigned long long) written, double(bytes) / 1e9);
     return 0;
 }
