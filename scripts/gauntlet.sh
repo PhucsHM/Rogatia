@@ -29,12 +29,22 @@ BOOK=${BOOK:-$BOOK_BALANCED}
 # and a score that lopsided converts to nothing usable. These three bracket
 # the engine instead of sitting under it.
 #
-# Caveat worth knowing: three versions of ONE engine share a playing style, so
-# they are not fully independent anchors the way three different engines would
-# be. They were chosen because Zahak publishes a Linux binary for every version
-# and its versions happen to span the band. Add a different family before
-# treating the number as settled.
-ANCHORS="zahak-7.1:2972:18 zahak-8.0:3160:16 zahak-9.0:3292:12"
+# Replaced again 2026-07-29, after the p8a net added roughly +184 Elo net-vs-net
+# and saturated the bottom of the old set. Zahak 7.1 (2972) is dropped.
+#
+# THREE FAMILIES now, not one: Zahak (Go), Stormphrax (C++) and Viridithas
+# (Rust). The old set was three versions of a single engine, which share a
+# playing style and are not independent anchors -- a family can be
+# systematically easy or hard for this engine and the number would never show
+# it.
+#
+# The two strong anchors sit far above us on purpose. Only Zahak publishes a
+# Linux binary in the 3300s; Stormphrax and Viridithas ship Linux builds only
+# for versions already past 3600, and Alexandria and Obsidian ship Windows
+# binaries only. A 15-20% score still converts -- it is a 95% score that does
+# not -- so a strong anchor from a different family is worth more than a
+# same-family one at an even score.
+ANCHORS="zahak-8.0:3160:16 zahak-9.0:3292:12 zahak-10.0:3334:8 stormphrax-5.0.0:3619:15 viridithas-15.0.0:3681:10"
 
 OUT=$ROOT/sprt-results/gauntlet-$(date +%Y%m%d-%H%M%S)
 mkdir -p "$OUT"

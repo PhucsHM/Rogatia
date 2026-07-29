@@ -80,3 +80,15 @@ echo "ready:"
 ls -1 "$ROOT/tools/fastchess" "$E"/* "$ROOT/books"/*.epd
 echo
 echo "next: make && scripts/gauntlet.sh 240 ./rogatia"
+
+# Stormphrax (C++) and Viridithas (Rust) -- different families from Zahak, so
+# the gauntlet is not three versions of one engine.  Both ship Linux binaries
+# only for versions already past 3600; that is fine, a 15-20% score converts.
+if [ ! -x "$E/stormphrax-5.0.0" ]; then
+	get "$E/stormphrax-5.0.0" "https://github.com/Ciekce/Stormphrax/releases/download/v5.0.0/stormphrax-5.0.0-avx2"
+	chmod +x "$E/stormphrax-5.0.0"
+fi
+if [ ! -x "$E/viridithas-15.0.0" ]; then
+	get "$E/viridithas-15.0.0" "https://github.com/cosmobobak/viridithas/releases/download/v15.0.0/viridithas-15.0.0-linux-x86-64-v3"
+	chmod +x "$E/viridithas-15.0.0"
+fi
