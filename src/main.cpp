@@ -29,18 +29,23 @@ int main(int argc, char** argv) {
     else {
         // Sanity-check the eval SCALE against the net that just loaded.  SCALE
         // is a property of the trained net, not of this code, so it cannot be
-        // asserted -- but every pruning margin in tunable.h is calibrated to it,
-        // and an inflated eval silently makes all of them more aggressive.
+        // asserted -- but every pruning margin in tunable.h is calibrated to
+        // it, and an inflated eval silently makes all of them more aggressive.
         // Phase 6 hit exactly that: a net trained at wdl=0.75 came out at about
-        // twice the search scale, and nothing said a word.  The start position
-        // is close to equal, so a large score here means the scale moved.
-        rogatia::Position start;
-        start.set("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-        const int v = int(rogatia::nnue::evaluate(start));
-        if (v < -150 || v > 150)
+        // twice the search scale, and nothing said a word.
+        //
+        // QUEEN ODDS, not the start position.  The start position is worth
+        // about +20 to +40 cp, so at twice the scale it reads +40 to +80 --
+        // comfortably inside any sane band, which means the obvious check
+        // cannot see the exact failure it was written for.  A missing queen is
+        // worth roughly +900, and a doubled scale reads ~+1800.
+        rogatia::Position probe;
+        probe.set("rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        const int v = int(rogatia::nnue::evaluate(probe));
+        if (v < 450 || v > 1500)
             std::fprintf(stderr,
-                         "info string net evaluates the start position at %d cp -- the eval scale "
-                         "may have moved, re-check the pruning margins in tunable.h\n",
+                         "info string net evaluates queen odds at %d cp, expected ~900 -- the "
+                         "eval scale may have moved, re-check the pruning margins in tunable.h\n",
                          v);
     }
 #endif
