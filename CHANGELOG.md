@@ -86,6 +86,119 @@ published anywhere.
 
 ---
 
+## 2026-07-29 -- what 612 gauntlet games say about how this engine plays
+
+Analysis of every PGN from the 2+1 gauntlet, both machines. `scripts/style.py`
+and `scripts/draw-anatomy.py`, plus the eval-trajectory work below.
+
+### The critical finding: the tablebases were never switched on
+
+**No test script sets `option.SyzygyPath`.** Not `gauntlet.sh`, not
+`testqueue.sh`, not `sprt.sh`. The engine's default is `<empty>` and `main.cpp`
+reads no environment variable -- only `datagen.cpp` does, for datagen alone.
+
+So Syzygy probing, **merged at +24.07 +/- 9.41**, has been inert in every match
+the engine has played since. The one run that measured it passed the option by
+hand to one side:
+
+```
+"syzygy|rogatia-tb|rogatia-tb|0|5|option.SyzygyPath=C:/Users/minhp/syzygy/3-4-5"
+```
+
+Same binary on both sides. The tablebases *were* the patch. Nothing has enabled
+them since, so the 3379 measurement is of an engine playing ~24 Elo below its
+own merged strength, and every queued Phase 7 SPRT is measuring the same
+handicapped engine.
+
+### And it is visible in the games, which is how it was found
+
+Rogatia throws away winning positions at three to five times the rate of every
+opponent it faced. Share of each engine's own draws that came after it reached
++1.00:
+
+| Engine | draws from +1.00 |
+|---|---|
+| **Rogatia** | **35.7% - 73.1%** (mean ~54%) |
+| Clover 3.1 | 37.5% |
+| Zahak 10.0 | 17.6% |
+| Zahak 8.0 | 15.4% |
+| Smallbrain 6.0 | 10.0% |
+| Zahak 9.0 | 8.7% |
+| Alexandria 3.5 | 6.8% |
+| Stormphrax 5.0.0 | 0.0% |
+
+This is not "chess is drawish", and it is not eval noise. Of 317 drawn games,
+**109 held +1.00 for ten or more consecutive moves** and 90 held it for sixteen
+or more. Median hold among the 168 that reached +1.00 is **21 moves**.
+
+**38 drawn games peaked at +5.00 or better** -- a rook or more -- and 31 of
+those still had a minor piece or better on the board at the final position.
+
+### The mechanism: it liquidates into dead tablebase endings
+
+Of 59 drawn games that peaked above +3.00 and held it ten-plus moves, the final
+position was:
+
+| pieces on board | games |
+|---|---|
+| 2 (bare kings) | 5 |
+| 3 | 35 |
+| 4 | 6 |
+| 5 | 7 |
+| 6+ | 6 |
+
+**90% ended inside the 3-4-5 set already sitting on both machines' disks.**
+Actual final positions, with the peak eval the engine had reported:
+
+```
+8/7k/4K3/8/6B1/8/8/8    K+B vs K    peak +12.80
+k7/8/4n3/1K6/8/8/8/8    K+N vs K    peak  +7.31
+8/1k1K4/8/8/8/8/8/8     K   vs K    peak  +4.24
+8/8/k7/3K4/8/8/8/8      K   vs K    peak  +6.43
+```
+
+The engine wins a piece, evaluates it at +7 to +12, trades everything else off,
+and arrives at a position that has been a known draw since before computers. It
+reached **bare kings** from +4.24 five times.
+
+Two causes, and they compound:
+
+1. **The net does not know a lone minor piece cannot mate.** K+B vs K at +12.80
+   is not a search failure, it is the evaluation being confidently wrong about a
+   position with three pieces on it. This is the classic NNUE blind spot.
+2. **The thing that would have masked it was switched off.** A WDL probe at
+   depth would have returned `draw` for every position in that table and the
+   search would have avoided the trade that reached it.
+
+Fix (2) first -- it is one option in three scripts and it is already merged and
+measured. Then re-measure before deciding how much of (1) is left.
+
+### Style, for the record
+
+Aggressive and tactically sharp, weak at converting.
+
+- **Eval volatility 0.29-0.54 pawns/move**, against 0.17 for Alexandria, 0.19
+  for Smallbrain and 0.22 for Stormphrax. Its evaluation swings two to three
+  times as much as the strong opponents' -- consistent with an eval that reads
+  +7 and then collapses to 0.
+- **Sacrifices held 8+ plies in 25-50% of won games**, and the EAS stable core
+  runs 4,000-7,300 against Smallbrain's 1,727. It plays sharply.
+- **100% of wins ended in mate on the board**, never adjudication.
+- **Mean depth 29-33**, ahead of every opponent except Stormphrax at 36.3.
+- Game length **74-94 moves mean**, longest against the engines it cannot beat.
+
+### Clean
+
+Zero illegal moves, zero losses on time, zero disconnects, zero crashes across
+612 games and 48,385 Rogatia moves.
+
+`depth 244` appears on 1,008 moves and is not a bug: `MAX_PLY - 2` is the
+iterative-deepening cap, and these are solved positions where every iteration
+returns from the table instantly. Median 0.003s, 42.9s total across all 612
+games. Not worth an early-exit rule.
+
+---
+
 ## The one thing that will trip you up
 
 **The net is not in git.** `nets/` and `*.nnue` are gitignored on purpose, so a
