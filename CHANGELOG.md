@@ -659,6 +659,38 @@ source take effect at the next launch.
 
 ---
 
+## 2026-07-29, laptop — bounds tightened to [0.00, 3.00]
+
+**Decision: Phase 7 tests at `[0.00, 3.00]`, ahead of the strength table**, which
+puts that band above ~3300 and the engine at ~3175.
+
+**Why.** Many modern search refinements are worth 2-4 Elo, and this phase exists
+to find which of them help this engine. `elo1` is not a threshold a patch must
+clear -- H1 accepted means "better than `elo0`" -- but a true +3 patch sits near
+the middle of `[0, 5]`, which is where SPRT is slowest and closest to a coin flip
+on which hypothesis it accepts. At `[0, 3]` that same patch is the design point
+and accepts H1 about 95% of the time.
+
+**What it costs.** Rejecting a bad patch gets about 2.8x slower; games to a
+verdict scale about `1/(elo1 - elo0)^2`. `STALL_GAMES` therefore rises **4,000 ->
+12,000** in `scripts/testqueue.sh`. The two must move together: a stall limit
+that fires before the LLR can leave `+-0.6` resolves nothing and parks
+everything, which is the opposite of why the bounds were tightened.
+
+**The honest limit.** 12,000 games is ~11 hours on this box. Reliably resolving a
++2 patch needs more games than one machine supplies. `[0, 3]` reaches that wall
+sooner than `[0, 5]` did, and the wall is what OpenBench exists to break.
+
+**Rejected the same day: bundling the history stack.** capthist + conthist +
+histage as one test, on Phase 4's precedent. Phase 4 bundled three *untested*
+overlapping techniques; capthist has already measured negative twice, so a
+failed bundle could not say which component caused it.
+
+**Takes effect at the next queue launch.** A running drain keeps the bounds it
+started with, and a resumed test keeps the bounds baked into its `config.json`.
+
+---
+
 ## Updating this file
 
 Whoever completes a phase updates: the state table, a changelog entry with the

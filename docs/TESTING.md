@@ -84,6 +84,23 @@ The bounds tighten as the engine strengthens because the patches get smaller.
 A `[0, 10]` test at 3400 would accept noise; a `[0, 3]` test at 2200 would burn
 a day of games proving something a `[0, 10]` test settles in an hour.
 
+**Phase 7 uses `[0.00, 3.00]` at ~3175, ahead of the table.** Deliberate. `elo1`
+is not a threshold the patch must clear -- H1 accepted means "better than
+`elo0`" -- but a true +3 patch sits near the middle of `[0, 5]`, which is where
+SPRT is slowest and closest to a coin flip on which hypothesis it accepts. At
+`[0, 3]` that same patch is the design point and accepts H1 about 95% of the
+time. Many modern search refinements are worth 2-4 Elo, and this phase exists to
+find which of them help this engine.
+
+**What it costs: rejecting a bad patch gets about 2.8x slower.** Games to a
+verdict scale about `1/(elo1 - elo0)^2`. `scripts/testqueue.sh` therefore raises
+`STALL_GAMES` from 4,000 to **12,000** alongside the bounds -- a stall limit that
+fires before the LLR can move resolves nothing and parks everything.
+
+**The honest limit:** reliably resolving a +2 patch needs more games than one
+machine supplies. 12,000 games is ~11 hours here. That is the wall OpenBench
+exists to break, and `[0, 3]` on one box reaches it sooner than `[0, 5]` did.
+
 **Books:** `8moves_v3.epd` (balanced) under ~2800, `UHO_Lichess_4852_v1.epd`
 (biased, fewer draws, faster convergence) above it. The two harnesses now pick
 different defaults on purpose: **`sprt.sh` uses the sharp book**, because past

@@ -46,18 +46,18 @@ FASTCHESS=./tools/fastchess.exe
 # free win.  A test where both sides are the same binary and only an option
 # differs is the cleanest comparison there is: nothing else can explain it.
 QUEUE=(
-  "syzygy|rogatia-tb|rogatia-tb|0|5|option.SyzygyPath=C:/Users/minhp/syzygy/3-4-5"
-  "repetition|rogatia-rep|rogatia-base|0|5|"
-  "rule50|rogatia-r50|rogatia-base|0|5|"
-  "ttpv|rogatia-ttpv|rogatia-base|0|5|"
-  "checkext|rogatia-chkext|rogatia-base|0|5|"
-  "corrplexity|rogatia-cplx|rogatia-base|0|5|"
-  "capthist|rogatia-capt|rogatia-base|0|5|"
-  "rule50b|rogatia-r50b|rogatia-base|0|5|"
-  "conthist|rogatia-ch6|rogatia-base|0|5|"
-  "histage|rogatia-age|rogatia-base|0|5|"
-  "dblext|rogatia-dblx|rogatia-base|0|5|"
-  "probcut|rogatia-pc|rogatia-base|0|5|"
+  "syzygy|rogatia-tb|rogatia-tb|0|3|option.SyzygyPath=C:/Users/minhp/syzygy/3-4-5"
+  "repetition|rogatia-rep|rogatia-base|0|3|"
+  "rule50|rogatia-r50|rogatia-base|0|3|"
+  "ttpv|rogatia-ttpv|rogatia-base|0|3|"
+  "checkext|rogatia-chkext|rogatia-base|0|3|"
+  "corrplexity|rogatia-cplx|rogatia-base|0|3|"
+  "capthist|rogatia-capt|rogatia-base|0|3|"
+  "rule50b|rogatia-r50b|rogatia-base|0|3|"
+  "conthist|rogatia-ch6|rogatia-base|0|3|"
+  "histage|rogatia-age|rogatia-base|0|3|"
+  "dblext|rogatia-dblx|rogatia-base|0|3|"
+  "probcut|rogatia-pc|rogatia-base|0|3|"
 )
 
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$SUMMARY"; }
@@ -118,7 +118,20 @@ for entry in "${QUEUE[@]}"; do
     # Deliberately NOT an early abort on a losing result: SPRT rejects a real
     # loss fast on its own, and second-guessing it would throw away verdicts
     # that were about to arrive.
-    STALL_GAMES=4000
+    # Raised 4000 -> 12000 when the bounds tightened to [0.00, 3.00].
+    #
+    # Games to a verdict scale about 1/(elo1 - elo0)^2, so [0,5] -> [0,3] costs
+    # roughly 2.8x more games.  Leaving the limit at 4,000 would abort nearly
+    # every test before its LLR could leave +-0.6 -- which is the exact opposite
+    # of why the bounds were tightened.  The point of [0,3] is to resolve 2-4
+    # Elo patches instead of coin-flipping them; a stall limit that fires first
+    # resolves nothing and parks everything.
+    #
+    # 12,000 games is ~11 hours at ~1,100 games/hour.  That is the honest
+    # ceiling for one machine.  Reliably resolving a +2 patch needs more games
+    # than this box can supply, and that is what OpenBench is for -- see
+    # docs/TESTING.md.
+    STALL_GAMES=12000
     STALL_LLR=0.6
     monitor() {
         local pid=$1 lf=$2       # not `log`: that is the function name
