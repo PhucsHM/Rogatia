@@ -89,10 +89,21 @@ smallest rather than the largest — 19 of the 26 fifty-move draws came from
 positions that were never winning, where a fifty-move draw is a good result.
 This is what Phase 7 is now working through, in that order of size.
 
-Merged after passing: **Syzygy probing in search** (+24.07 +/- 9.41). Under test or queued:
-**the repetition ply distinction** (`phase7-repetition`), **the fifty-move eval
-taper** (`phase7-rule50`). `scripts/testqueue.sh` runs them back to back
-unattended — see `docs/TESTING.md`.
+All three conversion patches have now returned. **Syzygy probing** merged
+(+24.07 +/- 9.41). **The repetition ply distinction** is parked (~+2.34 +/- 7.43,
+stalled at 3,260 games). **The fifty-move eval taper** was rejected
+(-15.03 +/- 7.97) and is retuned on `phase7-rule50b`, threshold 20 -> 65.
+
+**Phase 7 is a breadth pass.** The aim is to bring the search to its strongest
+state by trying as many known techniques as the machine has time for, so each
+idea is built on its own branch, tested briefly, and **parked rather than
+abandoned** if it is overwhelmingly negative or cannot resolve. Parked patches
+come back later, retuned from the saved snapshot plus what the engine's own PGNs
+and the published numbers say. `scripts/testqueue.sh` runs the queue back to back
+unattended — see "How Phase 7 runs" in `CHANGELOG.md` and `docs/TESTING.md`.
+
+**Never delete a `phase7-*` branch.** A parked branch is a saved starting point,
+not a dead end.
 
 Working now: bitboards, black magic attacks, five Zobrist key sets, make/unmake, movegen (perft 37/37, 626,461,214 nodes bit-exact), fail-soft PVS with iterative deepening and aspiration windows, quiescence with SEE and delta pruning, bucketed TT, killers, butterfly history, continuation history, null move, LMR, RFP, LMP, SEE pruning, futility pruning, razoring, history pruning of quiets, internal iterative reduction, singular extensions, **NNUE evaluation** (`(768 → 256)x2 → 1`, SCReLU, incremental accumulator), tapered PeSTO PSQT as the no-net fallback, full UCI, 33 search constants exposed as UCI spin options (`src/tunable.h`), deterministic bench (**4,772,409** with a net, **6,951,633** without, at depth 12 — these move with every search change, so trust the CHANGELOG state table over any number quoted in prose).
 
@@ -118,7 +129,8 @@ The previous anchor set (Toad 1776, Goldfish 2252, Blunder 8.5.5 2664) is retire
 
 Reproduce: `CONCURRENCY=6 scripts/gauntlet.sh 240 ./rogatia`. Full protocol in `docs/TESTING.md`.
 
-Next concrete task: **finish the conversion work above, then Phase 8.** SMP is
+Next concrete task: **drain the search queue, retune the parked patches, then run
+the end-of-phase gate at 20+0.2 before Phase 8.** SMP is
 explicitly NOT next -- CCRL Blitz is a single-CPU list, so multithreading buys no
 rating, and it does not speed up testing either (an SPRT runs `option.Threads=1`
 at concurrency 8; making the engine multithreaded changes nothing). See
@@ -134,8 +146,8 @@ it gates nothing.
 
 **Partly fixed in Phase 4: the corrupt PV lines.** The `Illegal PV move` class is
 genuinely gone — 720 gauntlet games and a 2,308-game SPRT both produced zero.
-**The second class is now diagnosed and fixed** (branch `phase7-pvfix`,
-measured at 0.27 per game before). At a PV node the line is assembled by copying
+**The second class is now diagnosed and fixed** (`phase7-pvfix`, merged as
+`337fe99`; measured at 0.27 per game before). At a PV node the line is assembled by copying
 the child's: `pv[ply] = move`, then a memcpy of `pv[ply + 1]` for
 `pvLen[ply + 1]` moves. That is only valid when the child actually ran as a PV
 node — moveCount 1, or the full-window re-search, which is guarded by

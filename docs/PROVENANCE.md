@@ -74,10 +74,10 @@ The line is procedural, not just legal. Read a technique, close the file, implem
 |---|---|---|
 | Singular extensions | CPW "Singular Extensions"; shape common to every modern engine | Exclusion search at the same ply with `ss->excludedMove`, verified inert by raising `SingularDepth` past the bench depth and confirming bench returned to base to the node |
 | Correction history | CPW; Ethereal and Stockfish both publish the idea | Keyed on the pawn and non-pawn Zobrist sets, which is why five key sets exist. Raw eval goes to the TT, corrected eval to pruning -- conflating them compounds the correction on every revisit |
-| Capture history | CPW "History Heuristic" | Implemented, **twice rejected** (-20 +/- 23 raw, -8.69 +/- 33.62 scaled). Kept on `phase7-capthist` as a record of a negative result, not as pending work |
+| Capture history | CPW "History Heuristic" | Implemented, **twice rejected** (-20 +/- 23 raw, -8.69 +/- 33.62 scaled). **Parked, not abandoned:** `phase7-capthist2` rebuilds both commits on current main and is queued, because the base has moved by roughly 96 Elo since those tests |
 | Syzygy probing in search | Fathom (`src/fathom/`, MIT, vendored since Phase 5) and its own header docs | WDL at internal nodes, DTZ at the root for won positions only -- Fathom's docs warn DTZ plays unnaturally when losing. Fathom's WDL wrapper refuses a non-zero fifty-move counter, so probing fires at tablebase *entry* |
 | Repetition ply distinction | Stockfish's `is_draw(ply)` comment describes the rule; implemented from that description | One recurrence counts at or after the root, two before it. The engine previously conflated them and scored a position the real game had visited once as a draw |
-| Fifty-move eval taper | CPW; the general idea is universal, the threshold is ours | Evaluation slides toward zero above a counter threshold. The threshold is not from any source -- tapering from zero was measured first and cost 11.5% more nodes, so it exists to keep ordinary positions bit-identical |
+| Fifty-move eval taper | CPW; the general idea is universal, the threshold is ours | Evaluation slides toward zero above a counter threshold. The threshold is not from any source -- tapering from zero was measured first and cost 11.5% more nodes, so it exists to keep ordinary positions bit-identical. **Threshold 20 measured -15.03 +/- 7.97 and was rejected**; `phase7-rule50b` retunes it to 65 |
 | PV assembly guarded by a real PV child | Own diagnosis, no source | Not a technique; a defect fix. The child's PV is only copied when a PV child was actually searched |
 
 **Nothing in this phase was transliterated.** The two that came closest to a
@@ -94,7 +94,7 @@ rather than against a reference implementation's output.
 | `scripts/draw-anatomy.py` | Splits drawn games by how they ended and whether we were winning |
 | `scripts/pvcheck.py` | Replays games through a warm engine and validates every reported PV |
 | `scripts/spsa.py` | SPSA driver. Gain sequences from the Spall paper; Rk/ck guidance from the published fishtest practice |
-| `scripts/testqueue.ps1` | Runs queued SPRTs unattended, one at a time |
+| `scripts/testqueue.sh` | Runs queued SPRTs unattended, one at a time. Bash, not PowerShell, for a measured reason — see `docs/TESTING.md` |
 
 ---
 

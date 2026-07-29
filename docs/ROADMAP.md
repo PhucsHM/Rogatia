@@ -164,10 +164,43 @@ This is deliberately early. The net is scaffolding: it exists to make the *next*
 ### Phase 7 — Full search build-out (2–3 months) → **~3000–3100**
 
 **In progress.** Merged: singular extensions (+39.04 +/- 12.69), correction
-history (+33.13 +/- 11.60). Under test or queued: Syzygy probing in search, the
-repetition ply distinction, the fifty-move eval taper.
+history (+33.13 +/- 11.60), Syzygy probing (+24.07 +/- 9.41), the PV stale-tail
+fix (bench-neutral). Parked: the repetition ply distinction (~+2.34, stalled).
+Rejected and retuned: the fifty-move eval taper (-15.03 +/- 7.97, threshold now
+20 -> 65 on `phase7-rule50b`).
 
-**The phase is being driven by measurement rather than by this list.** The
+### How this phase runs
+
+**Phase 7 is a breadth pass, not a depth pass.** The aim is to bring the search
+to its strongest state by trying as many known techniques as the machine has time
+for. Machine time is the binding constraint at ~1,100 games/hour and one test at
+a time, so no single idea is allowed to consume the phase.
+
+1. **Build the idea** on its own `phase7-*` branch. Ship it with a gate that
+   proves the plumbing is inert when the feature is off -- bench must return to
+   base exactly. That separates the SPRT result from a bug in the scaffolding.
+2. **Test it briefly.** Run to a verdict, *or* to the conclusion that there is no
+   verdict at these bounds.
+3. **Park it** if it is overwhelmingly negative or cannot resolve. Keep the
+   branch and the resume state. Move to the next idea.
+4. **Come back and retune** from the parked snapshot, what the engine's own PGNs
+   say, and published numbers from other engines. Then re-test.
+
+**"Briefly" has numbers**, and they live in `scripts/testqueue.sh`:
+`STALL_GAMES=4000`, `STALL_LLR=0.6`. Past 4,000 games with the LLR still inside
++-0.6, the effect is too small to resolve at these bounds, and that answer is
+already in hand.
+
+**It is deliberately not an early abort on a losing result.** SPRT rejects a real
+loss quickly by itself; second-guessing it throws away verdicts that were about
+to arrive. `rule50` reached H0 in 2,568 games with no help.
+
+**A parked branch is a saved starting point, not a dead end. Never delete one.**
+Three are live now: `phase7-repetition` (parked with a 3,260-game resume),
+`phase7-rule50b` (retune of a rejection), `phase7-capthist2` (a twice-rejected
+patch rebuilt on a base that has moved ~96 Elo since).
+
+**The phase is also driven by measurement rather than by this list.** The
 720-game gauntlet showed 19% of all games were positions the engine evaluated as
 winning and then drew, from three separate causes -- see "Phase 7 conversion
 work" in `CHANGELOG.md`. Two items on this list changed status as a result:

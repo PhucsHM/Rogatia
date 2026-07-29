@@ -22,7 +22,8 @@ publishing.
 Current work is aimed by measurement rather than by a feature list. Replaying the
 gauntlet showed that **19% of all games were positions the engine evaluated as
 winning and then drew** — three separate causes, three separate fixes, each on
-its own branch under its own test. See [`CHANGELOG.md`](CHANGELOG.md),
+its own branch under its own test. One passed and merged, one was too small to
+resolve, one lost and is being retuned. See [`CHANGELOG.md`](CHANGELOG.md),
 [`docs/ROADMAP.md`](docs/ROADMAP.md) and [`docs/TESTING.md`](docs/TESTING.md).
 
 ## Goals

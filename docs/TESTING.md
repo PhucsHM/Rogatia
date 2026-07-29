@@ -28,6 +28,28 @@ git checkout base-phase3 && make CXX=g++ EXE=rogatia-base && git checkout -
 Rebuild the baseline whenever a patch passes and becomes the new reference —
 move the tag forward, rebuild `rogatia-base`, and note the new bench count.
 
+**There are two baselines, and they are not the same binary.**
+
+| Baseline | What it is | Used for |
+|---|---|---|
+| **Per-patch** | current `main`, built as `rogatia-base` | Every SPRT in the queue. Measures one patch, not the accumulated phase |
+| **Per-phase** | the tag `base-phase<N-1>` | The end-of-phase non-regression at 20+0.2 |
+
+During a breadth pass like Phase 7 the per-patch baseline moves often, so
+**rebuild `rogatia-base` after every merge into `main`** and check its bench
+before the next test. `rogatia-base` benches **4,772,409** today, which is
+`main`'s with-net count.
+
+**Rebuild between queue drains, never during one.** Every entry in
+`scripts/testqueue.sh` names `rogatia-base` as a *file*, and the queue runs the
+same file for hours. Replacing it mid-drain measures the early tests against one
+baseline and the later ones against another, and no log records which. Wait for
+`queue drained`, then rebuild.
+
+Testing a patch against a stale phase tag silently measures the phase instead of
+the patch, and the number reads as a large clean win. That is the mistake this
+table exists to prevent.
+
 Always verify the baseline's bench before trusting a result. Two binaries with
 different bench counts than you expect means you tested the wrong thing.
 

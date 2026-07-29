@@ -14,13 +14,13 @@ are sitting.
 
 | | |
 |---|---|
-| Phases complete | 1–6. **Phase 7 in progress.** Merged: singular extensions (+39.04 +/- 12.69), correction history (+33.13 +/- 11.60). Under test: syzygy, repetition, fifty-move taper — see "Phase 7 conversion work" below. |
+| Phases complete | 1–6. **Phase 7 in progress.** Merged: singular extensions (+39.04 +/- 12.69), correction history (+33.13 +/- 11.60), Syzygy probing (+24.07 +/- 9.41), the PV stale-tail fix (bench-neutral). Parked: repetition (~+2, stalled), rule50 (**-15.03, rejected**). See "Phase 7 conversion work" below. |
 | Target | **3500+ CCRL Blitz** (raised from 3200 on 2026-07-28). Blitz-only: measured on CCRL Blitz, tuned at the time control it plays, never verified at a slower one. |
 | Strength | **~3175 CCRL Blitz** — see "What the rating actually says" below. The gauntlet arithmetic returns 3195 +/- 24; three separate caveats all push it down, none up. |
 | Bench, with a net | **4,772,409** (4,063,328 at `base-phase6`) |
 | Bench, no net | **6,951,633** |
 | Current net | `nets/rogatia-p6.nnue`, `(768→256)x2→1`, 112M positions |
-| SPRT baseline | tag `base-phase6` |
+| SPRT baseline | **current `main`** — `rogatia-base.exe` benches 4,772,409, which is `main`'s with-net count. Every queued test measures its own patch, not the accumulated phase. The tag `base-phase6` is the *phase* baseline, used only for the end-of-phase gate. **Do not rebuild `rogatia-base` while the queue is draining.** |
 | Work split | **See "Active work split — set 2026-07-28" below.** Training box regenerates the corpus and retrains; laptop does Phase 7 search. |
 | Laptop | Armed — net fetched, checksum verified, all four gates pass |
 
@@ -136,10 +136,10 @@ good result and nothing should change.
 
 | Branch | Fixes | Bench | State |
 |---|---|---|---|
-| `phase7-syzygy` | Dead material — the search had never probed the tablebases sitting on disk | 4,772,409 (unchanged, dormant without `SyzygyPath`) | under test |
-| `phase7-repetition` | Three-fold — the engine scored a position the real game had visited *once* as a draw, where the rules need three | 4,772,409 (unchanged; bench FENs carry no game history, so the change is only reachable through `position ... moves ...`) | queued |
-| `phase7-rule50` | Fifty-move — the evaluation could not read the counter at all | 4,772,409 (unchanged; the taper starts above a threshold an ordinary search never reaches) | queued |
-| `phase7-pvfix` | The `PV continues after checkmate` warning, unexplained since before Phase 4 | 4,772,409 (unchanged — which is the proof: it changes what the engine says, never what it plays) | no SPRT needed |
+| `phase7-syzygy` | Dead material — the search had never probed the tablebases sitting on disk | 4,772,409 (unchanged, dormant without `SyzygyPath`) | **merged, +24.07 +/- 9.41** |
+| `phase7-repetition` | Three-fold — the engine scored a position the real game had visited *once* as a draw, where the rules need three | 4,772,409 (unchanged; bench FENs carry no game history, so the change is only reachable through `position ... moves ...`) | **parked** — ~+2.34 +/- 7.43, stalled at 3,260 games |
+| `phase7-rule50` | Fifty-move — the evaluation could not read the counter at all | 4,772,409 (unchanged; the taper starts above a threshold an ordinary search never reaches) | **rejected, -15.03 +/- 7.97.** Retuned on `phase7-rule50b` (threshold 20 -> 65), queued |
+| `phase7-pvfix` | The `PV continues after checkmate` warning, unexplained since before Phase 4 | 4,772,409 (unchanged — which is the proof: it changes what the engine says, never what it plays) | **merged**, no SPRT owed |
 
 **All four are bench-neutral, and that is the point rather than a coincidence.**
 Bench is the fingerprint of what the engine decides, so an unchanged count means
@@ -148,7 +148,7 @@ bench never visits: real game history behind the position, a running fifty-move
 counter, and tablebase range. It is also why the datagen run in progress was left
 alone — the labels for ordinary positions are unchanged bit for bit.
 
-`scripts/testqueue.ps1` runs the queue unattended; `docs/TESTING.md` has the
+`scripts/testqueue.sh` runs the queue unattended; `docs/TESTING.md` has the
 protocol and the analysis scripts that found all of this.
 
 ### Settled the same day, do not relitigate
@@ -156,8 +156,10 @@ protocol and the analysis scripts that found all of this.
 - **Target is 3500**, not 3200. Phase 9 and OpenBench both become requirements.
 - **A second anchor family** is deprioritised — the current rating is not what is
   being optimised.
-- **Verification at 20+0.2** will not be run. For a blitz-only engine, short-TC
-  tuning bias is aligned with the goal.
+- ~~**Verification at 20+0.2** will not be run.~~ **Superseded the same evening
+  at 23:56** — standard time controls became a later goal, so a *per-phase*
+  non-regression at 20+0.2 is now required. Per-*patch* verification is still
+  not run. See "The long-time-control gate" in `docs/TESTING.md`.
 - **"Search or evaluation?"** — both, as opportunities appear. The 24.8-vs-15.5
   depth observation is a reason to expect Phase 8 to pay well, not a gate.
 - **SPSA is off the table on this box.** `SingularDepth` 10-vs-8 measured
@@ -190,13 +192,16 @@ spurious losses on time.
 ### If you are on the laptop
 
 1. `git pull`, fetch the net (above), confirm the with-net bench for your commit.
-2. Your job is **Phase 7 search work** and the SPRTs that validate it. Baseline
-   is `base-phase6`:
+2. Your job is **Phase 7 search work** and the SPRTs that validate it. The
+   per-patch baseline is **current `main`**, so each test measures one patch
+   rather than the whole accumulated phase:
    ```bash
-   git checkout base-phase6 && make EXE=rogatia-base EVALFILE="$(pwd)/nets/rogatia-p6.nnue"
-   git checkout - && make EXE=rogatia-dev EVALFILE="$(pwd)/nets/rogatia-p6.nnue"
+   git checkout main && make EXE=rogatia-base EVALFILE="$(pwd)/nets/rogatia-p6.nnue"
+   git checkout <patch-branch> && make EXE=rogatia-dev EVALFILE="$(pwd)/nets/rogatia-p6.nnue"
    scripts/sprt.sh ./rogatia-dev ./rogatia-base
    ```
+   Rebuild `rogatia-base` whenever a patch merges into `main`. `base-phase6` is
+   the *phase* baseline and is used only for the end-of-phase gate at 20+0.2.
 3. Both binaries must use the **same net**, or you are measuring the net rather
    than your patch.
 4. Bounds are `[0.00, 5.00]` now — the engine is past 2800. `docs/TESTING.md`
@@ -260,7 +265,8 @@ Do **not** run SPRT while datagen is running — your own rule, and it is right.
 
 ### Laptop — Phase 7 search, one SPRT at a time
 
-Baseline `base-phase6`, net pinned to `rogatia-p6.nnue`, bounds `[0.00, 5.00]`.
+Per-patch baseline is current `main` (`base-phase6` is the phase-gate baseline),
+net pinned to `rogatia-p6.nnue`, bounds `[0.00, 5.00]`.
 
 1. **Singular extensions** — largest single item left (~67 Elo in Stockfish's
    removal test), eval-agnostic so a net swap cannot invalidate it, and SF notes
@@ -502,9 +508,11 @@ fastchess testing harness. First measurement 2197 +/- 29.
 
 ## Known problems
 
-- **`PV continues after checkmate`**, ~0.4 per game, seen from both engines in
-  SPRT logs. Predates Phase 4. Harmless to results — fastchess plays the
-  `bestmove` — but PV construction has a gap. Not diagnosed.
+- ~~**`PV continues after checkmate`**~~ — **diagnosed and fixed 2026-07-28**
+  (`phase7-pvfix`, merged as `337fe99`). A null-window fail-high left a stale
+  `pvLen[ply + 1]`, so the memcpy spliced a line from a different position onto
+  a good move. Bench-neutral: it changed what the engine said, never what it
+  played.
 - **The current net learned from pre-bugfix labels.** The 112M positions were
   generated before the en passant hashing and slider-blocker fixes. Regenerating
   should give cleaner labels. Not urgent; the net gets retrained regardless.
@@ -515,12 +523,16 @@ fastchess testing harness. First measurement 2197 +/- 29.
 
 ## Next steps
 
-1. **Phase 7 — search build-out.** Extensions, singular search, node-based time
-   management, SMP. The evaluation is no longer the weak link; the search is.
-2. **Regenerate data and retrain** on post-bugfix labels.
-3. **SPSA** the 31 tunables.
-4. **A second anchor family** before quoting 3195 as settled.
+1. **Phase 7 — search build-out.** Work the queue, then retune the parked
+   patches. See "How Phase 7 runs" below for the loop.
+2. **Regenerate data and retrain** on post-bugfix labels — running on the
+   training box now, ETA 2026-07-29 ~13:15.
+3. **The end-of-phase gate at 20+0.2**, `[-10.00, 0.00]` against `base-phase6`.
+   It has never been run and Phase 7 is the first phase that should end with it.
+4. **A second anchor family** before quoting 3195 as settled. Deprioritised.
 5. **OpenBench** once patches need 20k+ games, which one box cannot supply.
+
+~~SPSA the 31 tunables~~ — dropped on this hardware, see "Settled the same day".
 
 ---
 
@@ -562,6 +574,88 @@ honest figure**; 3195 is an artefact of averaging in a saturated reading.
 Not worth a doc-wide rewrite while both figures are within one error bar of each
 other, but the next re-anchor should drop any opponent scoring outside 25–75%
 from the weighting rather than including it.
+
+---
+
+## 2026-07-29, laptop — three verdicts, and how Phase 7 actually runs
+
+The queue ran overnight and returned all three conversion patches. One merged,
+one parked, one rejected.
+
+| Patch | Games | Result | State |
+|---|---|---|---|
+| `syzygy` | 1,966 | **+24.07 +/- 9.41**, H1 accepted | merged |
+| `repetition` | 3,260 | +2.34 +/- 7.43, LLR stuck at 0.08 | **parked** with its resume config |
+| `rule50` | 2,568 | **-15.03 +/- 7.97**, H0 accepted | **rejected**, retuned as `rule50b` |
+
+The syzygy PGNs also showed *why* it worked, not just that it did. Dead-material
+draws stayed at 58 total but inverted: 57 -> **17** while winning, 1 -> **41**
+while not winning. Three-fold draws from winning positions went 69 -> 88, because
+games escaped one draw bucket into another. That is how the next test was chosen.
+
+### How Phase 7 runs
+
+**Phase 7 is a breadth pass, not a depth pass.** The goal is to bring the search
+to its strongest state by trying as many known techniques as the machine has time
+for. So the loop is:
+
+1. **Build the idea** on its own `phase7-*` branch, with a gate that proves the
+   plumbing is inert when the feature is off. Bench must return to base exactly.
+2. **Test it briefly.** Not to a verdict at any cost — to a verdict *or* to the
+   conclusion that there is no verdict at these bounds.
+3. **Park it if it is overwhelmingly negative or unresolvable.** Keep the branch
+   and the resume state. Move to the next idea; the machine is the constraint.
+4. **Come back and retune** using the parked snapshot, what the engine's own
+   PGNs say, and published numbers from other engines. Then re-test.
+
+**"Briefly" has numbers, and they live in `scripts/testqueue.sh`:**
+`STALL_GAMES=4000` and `STALL_LLR=0.6`. Past 4,000 games with the LLR still
+inside +-0.6, the answer is "too small to resolve at these bounds" — and that
+answer is already in hand, so the test stops and the machine moves on.
+
+**This is deliberately NOT an early abort on a losing result.** SPRT rejects a
+real loss quickly on its own. Second-guessing it would throw away verdicts that
+were about to arrive. `rule50` proves the point: it reached H0 in 2,568 games
+without any help.
+
+**Both live examples of the loop:**
+
+- `repetition` stalled at 3,260 games projecting to ~120,000 for a number
+  already known to be about +2. Parked. The branch and the resume config are
+  kept, so the retune starts from 3,260 games rather than zero.
+- `rule50` was rejected at threshold 20. `phase7-rule50b` raises it to **65**,
+  built from the parked branch. Queued.
+- `capthist` was rejected twice (-20 +/- 23 raw, then -8.69 +/- 33.62 scaled).
+  `phase7-capthist2` rebuilds the same two commits on current main, because the
+  base has moved by roughly 96 Elo since those tests and the earlier numbers no
+  longer describe this engine. Queued.
+
+A parked branch is therefore **not** a dead end. It is a saved starting point.
+Do not delete `phase7-*` branches.
+
+### The 20+0.2 gate — superseding the 17:12 entry
+
+"Settled the same day" says verification at 20+0.2 will not be run. That was
+written at 17:12 on 2026-07-28 and superseded at 23:56 the same evening, when
+standard time controls became a later goal.
+
+The settled position now: **no per-patch verification at 20+0.2** — it would cut
+throughput by roughly five against one machine — but **one per-phase
+non-regression** at `[-10.00, 0.00]`, tc=20+0.2, of the whole accumulated phase
+against the previous phase tag. Phase 7 is the first phase that should end with
+it. Suspect `src/tunable.h` margins first if it fails; search *features* keep
+their sign across time controls, pruning *thresholds* do not.
+
+### Queue state at 07:36
+
+Running: `ttpv`. Behind it: `checkext, corrplexity, capthist, rule50b, conthist,
+histage, dblext, probcut`. Eight tests at ~1,100 games/hour is roughly a day of
+the only test machine, unattended.
+
+**The runner now executes an immutable copy.** `sprt-results/.queue-running.sh`
+is copied at launch, so editing `scripts/testqueue.sh` can no longer kill a
+running queue — the failure that cost six hours on 2026-07-28. Edits to the
+source take effect at the next launch.
 
 ---
 
