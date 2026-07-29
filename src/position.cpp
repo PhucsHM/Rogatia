@@ -218,18 +218,22 @@ void Position::update_keys(Piece pc, Square s) {
     const PieceType pt = type_of(pc);
     const Color     c  = color_of(pc);
 
-    st_.key ^= zobrist::Psq[KEY_MAIN][pc][s];
+    // All five sets for this (piece, square) are one contiguous 40-byte run, so
+    // bind the row once and the four or five reads below share a cache line.
+    const Key* const k = zobrist::Psq[pc][s];
+
+    st_.key ^= k[KEY_MAIN];
 
     if (pt == PAWN)
-        st_.pawnKey ^= zobrist::Psq[KEY_PAWN][pc][s];
+        st_.pawnKey ^= k[KEY_PAWN];
     else
-        st_.nonPawnKey[c] ^= zobrist::Psq[KEY_NONPAWN][pc][s];
+        st_.nonPawnKey[c] ^= k[KEY_NONPAWN];
 
     if (pt == ROOK || pt == QUEEN || pt == KING)
-        st_.majorKey ^= zobrist::Psq[KEY_MAJOR][pc][s];
+        st_.majorKey ^= k[KEY_MAJOR];
 
     if (pt == KNIGHT || pt == BISHOP || pt == KING)
-        st_.minorKey ^= zobrist::Psq[KEY_MINOR][pc][s];
+        st_.minorKey ^= k[KEY_MINOR];
 }
 
 void Position::put_piece(Piece pc, Square s) {

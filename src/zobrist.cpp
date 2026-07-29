@@ -5,7 +5,7 @@
 namespace rogatia {
 
 namespace zobrist {
-Key Psq[KEY_SET_NB][PIECE_NB][SQUARE_NB];
+Key Psq[PIECE_NB][SQUARE_NB][KEY_SET_NB];
 Key Castling[CASTLING_RIGHT_NB];
 Key EnPassant[FILE_NB];
 Key Side;
@@ -33,10 +33,15 @@ private:
 void init_zobrist() {
     SplitMix64 rng(0x524F474154494100ULL);  // "ROGATIA\0"
 
+    // The LOOP NEST IS THE WIRE FORMAT.  Psq is piece-major in memory now, but
+    // the draw order must stay set-major or every key in the engine changes --
+    // and with them every TT hit, every bench count, and the perft the project
+    // gates on.  Transposing the storage is free only as long as this nest is
+    // left exactly as it is: set outside, then piece, then square.
     for (int set = 0; set < KEY_SET_NB; ++set)
         for (int pc = 0; pc < PIECE_NB; ++pc)
             for (int s = 0; s < SQUARE_NB; ++s)
-                zobrist::Psq[set][pc][s] = rng.next();
+                zobrist::Psq[pc][s][set] = rng.next();
 
     for (int cr = 0; cr < CASTLING_RIGHT_NB; ++cr)
         zobrist::Castling[cr] = rng.next();

@@ -22,7 +22,12 @@ enum KeySet : int {
 
 namespace zobrist {
 
-extern Key Psq[KEY_SET_NB][PIECE_NB][SQUARE_NB];
+// PIECE-MAJOR, not set-major.  update_keys() reads four or five of these for one
+// (piece, square) on every piece event, and make_move fires it 4-6 times.  With
+// the set index outermost the five keys sat 8 KB apart -- five cache lines and
+// five pages for one piece landing on one square.  Here they are 40 contiguous
+// bytes, so the first read brings the rest in with it.
+extern Key Psq[PIECE_NB][SQUARE_NB][KEY_SET_NB];
 extern Key Castling[CASTLING_RIGHT_NB];
 extern Key EnPassant[FILE_NB];
 extern Key Side;
