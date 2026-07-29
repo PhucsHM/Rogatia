@@ -157,11 +157,19 @@ Score evaluate(const Position& pos, const Accumulator& acc) {
     const Color them = ~us;
 
     // The side to move always occupies the first half of the output weights.
-    int out = 0;
+    //
+    // The accumulator is 64-bit, not 32-bit.  One term reaches QA*QA * 32767 =
+    // 2,130,874,175, which barely fits an int32, and 512 of them do not.
+    // Signed overflow is undefined behaviour, and undefined behaviour is the
+    // only way -march divergence can enter this file: the compiler may
+    // reassociate a vectorised sum under a no-overflow assumption, and bench
+    // then differs between -march levels.  That breaks OpenBench eligibility.
+    // Nothing at load time bounds l1w, so int32 here is trust, not a check.
+    std::int64_t out = 0;
     for (int i = 0; i < HIDDEN; ++i)
-        out += screlu(acc.v[us][i]) * int(Net.l1w[i]);
+        out += std::int64_t(screlu(acc.v[us][i])) * int(Net.l1w[i]);
     for (int i = 0; i < HIDDEN; ++i)
-        out += screlu(acc.v[them][i]) * int(Net.l1w[HIDDEN + i]);
+        out += std::int64_t(screlu(acc.v[them][i])) * int(Net.l1w[HIDDEN + i]);
 
     // screlu squared the QA-quantised activations, so the running total is at
     // QA*QA*QB.  One division brings it back to QA*QB, which is the scale the

@@ -262,6 +262,16 @@ void run(const Config& cfg) {
         int decisiveSide = 0;  // which side those plies favoured: +1 white, -1 black
 
         for (int ply = 0; ply < MAX_GAME_PLIES; ++ply) {
+            // Mate first.  A mating move that happens to be the 100th halfmove
+            // is a win, not a fifty-move draw, and is_game_draw() has no such
+            // exception -- so checking the draw first mislabels the game.
+            if (count_legal(pos) == 0) {
+                // Checkmate is a loss for the side to move; stalemate is a draw.
+                if (pos.in_check())
+                    whiteResult = (pos.side_to_move() == WHITE) ? 0 : 2;
+                break;
+            }
+
             if (pos.is_game_draw())
                 break;
 
@@ -271,13 +281,6 @@ void run(const Config& cfg) {
             const int tb = probe_syzygy(pos);
             if (tb >= 0) {
                 whiteResult = tb;
-                break;
-            }
-
-            if (count_legal(pos) == 0) {
-                // Checkmate is a loss for the side to move; stalemate is a draw.
-                if (pos.in_check())
-                    whiteResult = (pos.side_to_move() == WHITE) ? 0 : 2;
                 break;
             }
 

@@ -29,6 +29,13 @@ void clear();
 
 // Runs iterative deepening to completion, printing `info` lines as it goes and
 // a single `bestmove` at the end.  Blocking -- UCI runs it on its own thread.
+// Clear the stop flag.  Call this on the UCI thread BEFORE starting the search
+// thread, never inside go().  Clearing it inside go() loses a `stop` that
+// arrives between the spawn and the new thread reaching the store -- and a lost
+// stop makes `go infinite` run to depth 244 while the UCI thread blocks on
+// join(), which is a hang.
+void prepare();
+
 void go(Position& pos, const Limits& limits);
 
 // Asks the running search to abort at its next check.  Safe from any thread.

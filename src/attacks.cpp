@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "attacks.h"
 
+#include <cassert>
 #include <cstdio>
 
 namespace rogatia {
@@ -186,6 +187,12 @@ void init_attacks() {
         detail::PseudoAttacks[QUEEN][s]  = detail::PseudoAttacks[BISHOP][s]
                                          | detail::PseudoAttacks[ROOK][s];
     }
+
+    // The black-magic and PEXT paths must agree for every square and occupancy.
+    // verify_slider_tables() was written to check that and was never called, so
+    // the two builds have only ever been compared by hand with perft.  Free in
+    // release, and `make debug` now proves it on every run.
+    assert(verify_slider_tables());
 }
 
 bool verify_slider_tables() {

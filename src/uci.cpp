@@ -134,6 +134,10 @@ void cmd_go(Engine& e, std::istringstream& is) {
     }
 
     e.join();
+    // Clear the stop flag HERE, on this thread, before the search thread
+    // starts.  Doing it inside go() loses a `stop` that lands between the spawn
+    // and the new thread reaching the store.
+    search::prepare();
     e.searching = std::thread([&e, limits] { search::go(e.pos, limits); });
 }
 

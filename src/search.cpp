@@ -1187,9 +1187,9 @@ void clear() {
 
 void stop() { Stopped.store(true, std::memory_order_relaxed); }
 
-void go(Position& pos, const Limits& limits) {
-    Stopped.store(false, std::memory_order_relaxed);
+void prepare() { Stopped.store(false, std::memory_order_relaxed); }
 
+void go(Position& pos, const Limits& limits) {
     W.nodes    = 0;
     W.tbHits   = 0;
     W.seldepth = 0;
